@@ -1,0 +1,10 @@
+name = "IterativePerturbationTheory"
+uuid = "bd90abd5-66b6-409b-9c8a-d9ba282b4dcc"
+authors = ["Matteo Smerlak <matteo.smerlak@gmail.com>"]
+version = "0.1.0"
+
+[deps]
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+MKL = "33e6dc65-8f57-5167-99aa-e5a354878fb2"
+MKLSparse = "0c723cd3-b8cd-5d40-b370-ba682dde9aae"
+NLsolve = "2774e3e8-f4cf-5e23-947b-6d7e65073b56"
