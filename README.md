@@ -1,6 +1,6 @@
 # Iterative Perturbation Theory
 
-Iterative Perturbation Theory (IPT) is an iterative algorithm (inspired from Rayleigh-Schrödinger perturbation theory) to compute the eigenvectors of a near-diagonal matrix. 
+Iterative Perturbation Theory (IPT) is an elementary iterative algorithm (inspired from Rayleigh-Schrödinger perturbation theory) to compute the eigenvectors of a near-diagonal matrix. 
 
 ## Cons
 
@@ -14,7 +14,7 @@ Iterative Perturbation Theory (IPT) is an iterative algorithm (inspired from Ray
 
 - Unlike classical 'iterative' algorithms (Krylov-Schur, LOBPCG, Davidson methods), IPT is not based on the Rayleigh-Ritz method (diagonalization in a subspace using a direct method). IPT is fully self-contained. 
 
-- IPT is straightforward: it consists of fixing the fixed points of a simple, explicit quadratic map in matrix space. In particular, any fixed-point method (Picard iteration, Anderson acceleration, etc.) can be used out-of-the-box. Here I use a custom implementation Lepage-Saucier's [Alternating Cyclic Extrapolation](https://arxiv.org/abs/2104.04974) fixed-point acceleration algorithm. 
+- IPT is straightforward: it consists of fixing the fixed points of a simple, explicit quadratic map in matrix space. In particular, any fixed-point method (Picard iteration, Anderson acceleration, etc.) can be used out-of-the-box. Here I use a custom implementation of Lepage-Saucier's [Alternating Cyclic Extrapolation](https://arxiv.org/abs/2104.04974) fixed-point acceleration algorithm. 
 
 - IPT makes is equally efficient with symmetric and non-symmetric problems. 
 
