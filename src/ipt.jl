@@ -8,9 +8,9 @@ function ipt(
     acceleration=:acx,
     trace=false,
     acx_orders=[3, 2],
-    maxiter=1000,
+    maxiters=1000,
     diagonal=nothing,
-    anderson_memory=1,
+    anderson_memory=5,
     timed=false
 )
 
@@ -35,7 +35,7 @@ function ipt(
 
     if acceleration == :acx
 
-        @timeit_debug "iteration" sol = acx(F!, X₀; tol=tol, orders=acx_orders, trace=trace, maxiters=maxiter, matrix=M)
+        @timeit_debug "iteration" sol = acx(F!, X₀; tol=tol, orders=acx_orders, trace=trace, maxiters=maxiters, matrix=M)
 
         timed && print_timer()
 
@@ -76,7 +76,7 @@ function ipt(
         end
 
 
-        @timeit_debug "iteration" while tol < error < Inf && iterations < maxiter
+        @timeit_debug "iteration" while tol < error < Inf && iterations < maxiters
             iterations += 1
             @timeit_debug "apply F" F!(Y, X)
             @timeit_debug "compute error" error = norm(X .- Y)
