@@ -11,7 +11,7 @@ function acx(
     F!::Function,
     X₀;
     orders=[3, 2],
-    tol=sqrt(eps(eltype(X₀))),
+    tol=sqrt(eps(real(eltype(X₀)))),
     maxiters=1000,
     trace=false,
     matrix=nothing

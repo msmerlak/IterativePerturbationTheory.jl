@@ -1,6 +1,6 @@
 module IterativePerturbationTheory
 
-export ipt
+export ipt, eigen_mixed_precision
 
 using MKL, MKLSparse
 using LinearAlgebra, LinearMaps, SparseArrays

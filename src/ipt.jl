@@ -4,7 +4,7 @@ function ipt(
     M::Union{Matrix, SparseMatrixCSC, LinearMap},
     k=size(M, 1), # number of eigenpairs requested
     X₀=Matrix{eltype(M)}(I, size(M, 1), k); # initial eigenmatrix
-    tol=100 * eps(eltype(M)) * norm(M),
+    tol=100 * eps(real(eltype(M))) * norm(M),
     acceleration=:acx,
     trace=false,
     acx_orders=[3, 2],
