@@ -1,6 +1,6 @@
 # Iterative Perturbation Theory
 
-Iterative Perturbation Theory (IPT) is eigenvalue algorithm inspired from Rayleigh-Schrödinger perturbation theory and based on fixed-point iteration. 
+Iterative Perturbation Theory (IPT) is an iterative algorithm (inspired from Rayleigh-Schrödinger perturbation theory) to compute the eigenvectors of a near-diagonal matrix. 
 
 ## Usage
 

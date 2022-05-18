@@ -45,11 +45,11 @@ function acx(
         if trace
             push!(matvecs, k * f_calls)
             push!(residuals,
-                vec(mapslices(my_norm, matrix * F¹ - F¹ * Diagonal(matrix * F¹); dims=1))
+                vec(mapslices(norm, matrix * F¹ - F¹ * Diagonal(matrix * F¹); dims=1))
             )
         end
 
-        my_norm(Δ¹) < tol && return (
+        norm(Δ¹) < tol && return (
             solution=F¹,
             trace=trace ? reduce(hcat, residuals)' : nothing,
             f_calls=f_calls,
