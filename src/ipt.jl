@@ -21,7 +21,7 @@ function ipt(
         T = eltype(M)
         @timeit_debug "build d" d = (diagonal == nothing) ? view(M, diagind(M)) : diagonal
         @timeit_debug "build D" D = Diagonal(d)
-        @timeit_debug "build G" G = one(T) ./ (view(d, 1:k)' .- view(d, :))
+        @timeit_debug "build G" G = one(T) ./ (transpose(view(d, 1:k)) .- view(d, :))
     end
 
     function F!(Y, X)
