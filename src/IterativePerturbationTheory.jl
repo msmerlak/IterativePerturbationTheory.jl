@@ -1,8 +1,10 @@
 module IterativePerturbationTheory
 
-export ipt, eigen_mixed_precision
+export ipt
 
-using MKL, MKLSparse
+#using MKL, MKLSparse 
+## very strange: MKL breaks eigen when loaded on my mac, not on linux servers
+
 using LinearAlgebra, LinearMaps, SparseArrays
 using TimerOutputs
 

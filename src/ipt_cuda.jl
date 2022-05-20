@@ -1,6 +1,8 @@
 
 using CUDA
 
+### No convergence tests in this version, as computing norms (rather than mat-mul) appears to be the bottleneck on the GPU.
+
 function ipt(
     M::CuArray,
     k=size(M, 1), # number of eigenpairs requested

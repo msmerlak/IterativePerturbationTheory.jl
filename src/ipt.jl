@@ -80,6 +80,7 @@ function ipt(
             iterations += 1
             @timeit_debug "apply F" F!(Y, X)
             @timeit_debug "compute error" error = norm(X .- Y)
+            @show error
             @timeit_debug "update current vector" X .= Y
 
             if trace
