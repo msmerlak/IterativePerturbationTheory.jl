@@ -1,7 +1,9 @@
 
 using CUDA
 
-### No convergence tests in this version, as computing norms (rather than mat-mul) appears to be the bottleneck on the GPU.
+"""
+No convergence tests in this version, as computing norms (rather than mat-mul) appears to be the bottleneck on the GPU.
+"""
 
 function ipt(
     M::CuArray,
