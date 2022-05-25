@@ -12,6 +12,7 @@ function ipt(
     diagonal=nothing,
     anderson_memory=5,
     timed=false
+    
 )
 
     timed && reset_timer!()
@@ -53,7 +54,7 @@ function ipt(
 
     elseif acceleration == :anderson
 
-        sol = fixedpoint(F!, X₀; method=:anderson, ftol=tol, store_trace=trace, m=anderson_memory)
+        sol = fixedpoint(F!, X₀; method=:anderson, ftol=tol, store_trace=trace, m=anderson_memory, iterations = maxiters)
 
         timed && print_timer()
 
@@ -80,7 +81,6 @@ function ipt(
             iterations += 1
             @timeit_debug "apply F" F!(Y, X)
             @timeit_debug "compute error" error = norm(X .- Y)
-            @show error
             @timeit_debug "update current vector" X .= Y
 
             if trace
