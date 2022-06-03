@@ -71,9 +71,9 @@ function ipt(
         Y = similar(X)
         i = 0
 
+        matvecs = Vector{Vector{Int}}(undef, maxiter)
         if trace
             residual_history = Vector{Vector{T}}(undef, maxiter)
-            matvecs = Vector{Vector{Int}}(undef, maxiter)
         end
 
         @timeit_debug "iteration" while i < maxiter
