@@ -41,10 +41,7 @@ function ipt(
 
         timed && print_timer()
 
-        if sol == :Failed
-            return :Failed
-        else
-            return (
+        return (
                 vectors=sol.solution,
                 values=diag(M * sol.solution),
                 trace=sol.trace,
