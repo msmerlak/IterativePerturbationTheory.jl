@@ -12,7 +12,7 @@ function acx(
     X₀;
     orders=[3, 2],
     tol=sqrt(eps(real(eltype(X₀)))),
-    maxiters=1000,
+    maxiter=1000,
     trace=false,
     matrix=nothing
 )
@@ -29,11 +29,11 @@ function acx(
     f_calls = 0
 
     if trace
-        residuals = []
-        matvecs = []
+        residuals = Vector{Vector{Float64}}(undef, maxiter)
+        matvecs = Vector{Int64}(undef, maxiter)
     end
 
-    for i = 0:maxiters
+    for i = 1:maxiter
 
         p = orders[(i%P)+1]
 
@@ -43,15 +43,13 @@ function acx(
         @timeit_debug "Δ¹" @. Δ¹ = F¹ - X
 
         if trace
-            push!(matvecs, k * f_calls)
-            push!(residuals,
-                vec(mapslices(norm, matrix * F¹ - F¹ * Diagonal(matrix * F¹); dims=1))
-            )
+            matvecs[i] = k * f_calls
+            residuals[i] = vec(mapslices(norm, matrix * F¹ - F¹ * Diagonal(matrix * F¹); dims=1))
         end
 
         norm(Δ¹) < tol && return (
             solution=F¹,
-            trace=trace ? reduce(hcat, residuals)' : nothing,
+            trace=trace ? reduce(hcat, residuals[1:i])' : nothing,
             f_calls=f_calls,
             matvecs=trace ? matvecs : nothing
         )
@@ -80,7 +78,7 @@ function acx(
         i += 1
     end
 
-    println("Didn't converge in $maxiters iterations.")
+    println("Didn't converge in $maxiter iterations.")
     return :Failed
 end
 

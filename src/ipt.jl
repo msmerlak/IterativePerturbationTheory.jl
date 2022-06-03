@@ -8,11 +8,10 @@ function ipt(
     acceleration=:acx,
     trace=false,
     acx_orders=[3, 2],
-    maxiters=1000,
+    maxiter=1000,
     diagonal=nothing,
     anderson_memory=5,
     timed=false
-    
 )
 
     timed && reset_timer!()
@@ -36,7 +35,7 @@ function ipt(
 
     if acceleration == :acx
 
-        @timeit_debug "iteration" sol = acx(F!, X₀; tol=tol, orders=acx_orders, trace=trace, maxiters=maxiters, matrix=M)
+        @timeit_debug "iteration" sol = acx(F!, X₀; tol=tol, orders=acx_orders, trace=trace, maxiter=maxiter, matrix=M)
 
         timed && print_timer()
 
@@ -54,7 +53,7 @@ function ipt(
 
     elseif acceleration == :anderson
 
-        sol = fixedpoint(F!, X₀; method=:anderson, ftol=tol, store_trace=trace, m=anderson_memory, iterations = maxiters)
+        sol = fixedpoint(F!, X₀; method=:anderson, ftol=tol, store_trace=trace, m=anderson_memory, iterations = maxiter)
 
         timed && print_timer()
 
@@ -77,7 +76,7 @@ function ipt(
         end
 
 
-        @timeit_debug "iteration" while tol < error < Inf && iterations < maxiters
+        @timeit_debug "iteration" while tol < error < Inf && iterations < maxiter
             iterations += 1
             @timeit_debug "apply F" F!(Y, X)
             @timeit_debug "compute error" error = norm(X .- Y)
