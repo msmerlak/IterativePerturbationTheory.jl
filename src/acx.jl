@@ -47,12 +47,7 @@ function acx(
             residual_history[i] = R 
         end
 
-        maximum(R) < tol && return (
-            solution=F¹,
-            trace=trace ? reduce(hcat, residual_history[1:i])' : nothing,
-            f_calls=f_calls,
-            matvecs=matvecs[1:i]
-        )
+        maximum(R) < tol && break
 
         F!(F², F¹)
         f_calls += 1
@@ -78,7 +73,12 @@ function acx(
     end
 
     println("Didn't converge in $maxiter iterations.")
-    return :Failed
+    return (
+        solution=F¹,
+        trace=trace ? reduce(hcat, residual_history[1:i])' : nothing,
+        f_calls=f_calls,
+        matvecs=matvecs[1:i]
+    )
 end
 
 

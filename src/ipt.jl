@@ -93,20 +93,20 @@ function ipt(
 
         end
 
-        converged = maximum(R) < tol
 
         timed && print_timer()
 
-        if !converged
-            return :Failed
-        else
-            return (
-                vectors=X,
-                values=diag(M * X),
-                matvecs=trace ? matvecs[1:i] : nothing,
-                trace=trace ? reduce(hcat, residual_history[1:i])' : nothing
-            )
+        if maximum(R) > tol
+            println("Didn't converge in $maxiter iterations.")
         end
+
+        return (
+            vectors=X,
+            values=diag(M * X),
+            matvecs=trace ? matvecs[1:i] : nothing,
+            trace=trace ? reduce(hcat, residual_history[1:i])' : nothing
+        )
+
 
     end
 end
