@@ -26,10 +26,12 @@ function ipt(
 
     function F!(Y, X)
         @timeit_debug "matrix product" mul!(Y, M, X)
+        @timeit_debug "residuals" R  = vec(mapslices(norm, Y .- X * Diagonal(Y); dims=1))
         @timeit_debug "diagonal product 1" mul!(Y, D, X, -one(T), one(T))
         @timeit_debug "diagonal product 2" mul!(Y, X, Diagonal(Y), -one(T), one(T))
         @timeit_debug "hadamard product" Y .*= G
         @timeit_debug "reset diagonal" Y[diagind(Y)] .= one(T)
+        return R
     end
 
 
@@ -67,28 +69,31 @@ function ipt(
 
         X = copy(X₀)
         Y = similar(X)
-        iterations = 0
-        error = 1.0
+        i = 0
 
         if trace
-            errors = [vec(mapslices(norm, M * X - X * Diagonal(M * X); dims=1))]
-            matvecs = [0]
+            residual_history = Vector{Vector{T}}(undef, maxiter)
+            matvecs = Vector{Vector{Int}}(undef, maxiter)
         end
 
+        @timeit_debug "iteration" while i < maxiter
 
-        @timeit_debug "iteration" while tol < error < Inf && iterations < maxiter
-            iterations += 1
-            @timeit_debug "apply F" F!(Y, X)
-            @timeit_debug "compute error" error = norm(X .- Y)
+            i += 1
+
+            @timeit_debug "apply F" R = F!(Y, X)
             @timeit_debug "update current vector" X .= Y
+            matvecs[i] = i == 1 ? k : matvecs[i - 1] + k 
+
+            maximum(R) < tol && break
 
             if trace
-                push!(matvecs, matvecs[end] + k)
-                push!(errors, vec(mapslices(norm, M * X - X * Diagonal(M * X); dims=1)))
+                residual_history[i] = R
             end
+
+
         end
 
-        converged = error < tol
+        converged = maximum(R) < tol
 
         timed && print_timer()
 
@@ -98,8 +103,8 @@ function ipt(
             return (
                 vectors=X,
                 values=diag(M * X),
-                matvecs=trace ? matvecs : nothing,
-                trace=trace ? reduce(hcat, errors)' : nothing
+                matvecs=trace ? matvecs[1:i] : nothing,
+                trace=trace ? reduce(hcat, residual_history[1:i])' : nothing
             )
         end
 

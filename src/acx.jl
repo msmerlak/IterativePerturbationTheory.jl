@@ -27,31 +27,31 @@ function acx(
 
 
     f_calls = 0
+    i = 0
 
-    if trace
-        residuals = Vector{Vector{Float64}}(undef, maxiter)
-        matvecs = Vector{Int64}(undef, maxiter)
-    end
+    matvecs = Vector{Int64}(undef, maxiter)
+    if trace residual_history = Vector{Vector{eltype(X₀)}}(undef, maxiter) end
 
-    for i = 1:maxiter
+    while i < maxiter
 
+        i += 1
         p = orders[(i%P)+1]
 
-        F!(F¹, X)
+        R = F!(F¹, X)
         f_calls += 1
 
         @timeit_debug "Δ¹" @. Δ¹ = F¹ - X
 
+        matvecs[i] = k * f_calls
         if trace
-            matvecs[i] = k * f_calls
-            residuals[i] = vec(mapslices(norm, matrix * F¹ - F¹ * Diagonal(matrix * F¹); dims=1))
+            residual_history[i] = R 
         end
 
-        norm(Δ¹) < tol && return (
+        maximum(R) < tol && return (
             solution=F¹,
-            trace=trace ? reduce(hcat, residuals[1:i])' : nothing,
+            trace=trace ? reduce(hcat, residual_history[1:i])' : nothing,
             f_calls=f_calls,
-            matvecs=trace ? matvecs : nothing
+            matvecs=matvecs[1:i]
         )
 
         F!(F², F¹)
@@ -75,7 +75,6 @@ function acx(
             @timeit_debug "X" @. X += 3σ * Δ¹ + 3σ^2 * Δ² + σ^3 * Δ³
 
         end
-        i += 1
     end
 
     println("Didn't converge in $maxiter iterations.")
