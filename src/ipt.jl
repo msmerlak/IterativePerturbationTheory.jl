@@ -48,7 +48,6 @@ function ipt(
                 iterations=sol.f_calls,
                 matvecs=sol.matvecs
             )
-        end
 
     elseif acceleration == :anderson
 
