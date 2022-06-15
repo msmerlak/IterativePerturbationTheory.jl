@@ -92,9 +92,7 @@ function ipt(
 
         timed && print_timer()
 
-        if maximum(R) > tol
-            println("Didn't converge in $maxiter iterations.")
-        end
+        i == maxiter && println("Didn't converge in $maxiter iterations.")
 
         return (
             vectors=X,
