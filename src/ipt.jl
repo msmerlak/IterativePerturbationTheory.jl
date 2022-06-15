@@ -67,7 +67,7 @@ function ipt(
         Y = similar(X)
         i = 0
 
-        matvecs = Vector{Vector{Int}}(undef, maxiter)
+        matvecs = Vector{Int}(undef, maxiter)
         if trace
             residual_history = Vector{Vector{T}}(undef, maxiter)
         end
