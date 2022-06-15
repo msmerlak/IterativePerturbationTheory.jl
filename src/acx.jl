@@ -72,7 +72,8 @@ function acx(
         end
     end
 
-    println("Didn't converge in $maxiter iterations.")
+    i == maxiter && println("Didn't converge in $maxiter iterations.")
+    
     return (
         solution=F¹,
         trace=trace ? reduce(hcat, residual_history[1:i])' : nothing,
