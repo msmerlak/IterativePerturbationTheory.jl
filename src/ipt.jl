@@ -1,4 +1,5 @@
 using NLsolve: fixedpoint
+using LinearAlgebra
 
 function ipt(
     M::Union{Matrix, SparseMatrixCSC, LinearMap},
@@ -9,18 +10,25 @@ function ipt(
     trace=false,
     acx_orders=[3, 2],
     maxiter=1000,
-    diagonal=diag(M),
     anderson_memory=5,
-    timed=false
+    timed=false,
+    diagonal=diag(M),
+    lift_degeneracies = true,
+    degeneracy_threshold = 1e-1
 )
 
     timed && reset_timer!()
+
 
     @timeit_debug "preparation" begin
         N = size(M, 1)
         T = eltype(M)
         #@timeit_debug "build d" d = (diagonal == nothing) ? view(M, diagind(M)) : diagonal
-        @timeit_debug "build D" D = Diagonal(diagonal)
+        @timeit_debug "lift degeneracies" if lift_degeneracies Q, s = lift_degeneracies!(M, degeneracy_threshold) else Q = I end
+        @timeit_debug "build D" begin
+            diagonal=diagonal[s]
+            D = Diagonal(diagonal)
+        end
         @timeit_debug "build G" G = one(T) ./ (transpose(view(diagonal, 1:k)) .- view(diagonal, :))
     end
 
@@ -41,7 +49,7 @@ function ipt(
         timed && print_timer()
 
         return (
-                vectors=sol.solution,
+                vectors= Q * sol.solution,
                 values=diag(M * sol.solution),
                 trace=sol.trace,
                 iterations=sol.f_calls,
@@ -55,7 +63,7 @@ function ipt(
         timed && print_timer()
 
         return (
-            vectors=sol.zero,
+            vectors= Q * sol.zero,
             values=diag(M * sol.zero),
             trace=trace ? [sol.trace[i].fnorm for i in 1:sol.iterations] : nothing
         )
@@ -97,7 +105,7 @@ function ipt(
         i == maxiter && println("Didn't converge in $maxiter iterations.")
 
         return (
-            vectors=X,
+            vectors= Q * X,
             values=diag(M * X),
             matvecs=trace ? matvecs[1:i] : nothing,
             trace=trace ? reduce(hcat, residual_history[1:i])' : nothing

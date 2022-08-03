@@ -20,3 +20,12 @@ for A in (M, S)
         end
     end
 end
+
+
+@time @testset "Degenerate eigenvalues" begin
+    A = diagm([1, 1, 2]) + 1e-2rand(3, 3)
+    eig = eigen(A)
+    Z = ipt(A; tol=TOL)
+    @test Z.values ≈ eig.values
+    @test norm(A * Z.vectors - Z.vectors * Diagonal(Z.values)) ≤ TOL
+end

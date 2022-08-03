@@ -1,4 +1,5 @@
 using LinearMaps, SparseArrays
+import LinearAlgebra:diag
 
 function e(i, m)
     q = zeros(m)
