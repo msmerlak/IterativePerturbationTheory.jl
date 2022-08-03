@@ -4,12 +4,12 @@ function ipt(
     M::Union{Matrix, SparseMatrixCSC, LinearMap},
     k=size(M, 1), # number of eigenpairs requested
     X₀=Matrix{eltype(M)}(I, size(M, 1), k); # initial eigenmatrix
-    tol=100 * eps(real(eltype(M))) * norm(M),
+    tol= 1e-10, #100 * eps(real(eltype(M))) * norm(M),
     acceleration=:acx,
     trace=false,
     acx_orders=[3, 2],
     maxiter=1000,
-    diagonal=nothing,
+    diagonal=diag(M),
     anderson_memory=5,
     timed=false
 )
@@ -19,9 +19,9 @@ function ipt(
     @timeit_debug "preparation" begin
         N = size(M, 1)
         T = eltype(M)
-        @timeit_debug "build d" d = (diagonal == nothing) ? view(M, diagind(M)) : diagonal
-        @timeit_debug "build D" D = Diagonal(d)
-        @timeit_debug "build G" G = one(T) ./ (transpose(view(d, 1:k)) .- view(d, :))
+        #@timeit_debug "build d" d = (diagonal == nothing) ? view(M, diagind(M)) : diagonal
+        @timeit_debug "build D" D = Diagonal(diagonal)
+        @timeit_debug "build G" G = one(T) ./ (transpose(view(diagonal, 1:k)) .- view(diagonal, :))
     end
 
     function F!(Y, X)
@@ -33,7 +33,6 @@ function ipt(
         @timeit_debug "reset diagonal" Y[diagind(Y)] .= one(T)
         return R
     end
-
 
     if acceleration == :acx
 
@@ -67,6 +66,8 @@ function ipt(
         Y = similar(X)
         i = 0
 
+
+
         matvecs = Vector{Int}(undef, maxiter)
         if trace
             residual_history = Vector{Vector{T}}(undef, maxiter)
@@ -80,13 +81,14 @@ function ipt(
             @timeit_debug "update current vector" X .= Y
             matvecs[i] = i == 1 ? k : matvecs[i - 1] + k 
 
-            maximum(R) < tol && break
+            
 
             if trace
                 residual_history[i] = R
             end
 
 
+            maximum(R) < tol && break
         end
 
 
@@ -100,7 +102,6 @@ function ipt(
             matvecs=trace ? matvecs[1:i] : nothing,
             trace=trace ? reduce(hcat, residual_history[1:i])' : nothing
         )
-
 
     end
 end

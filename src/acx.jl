@@ -7,6 +7,8 @@ See https://github.com/NicolasL-S/SpeedMapping.jl for the author's version, curr
 
 import LinearAlgebra: dot
 
+dot(X::AbstractMatrix, Y::AbstractMatrix) = dot.(eachcol(X), eachcol(Y))'
+
 function acx(
     F!::Function,
     X₀;
@@ -56,7 +58,7 @@ function acx(
 
         if p == 2
 
-            @timeit_debug "σ" σ = abs(dot(Δ², Δ¹) / dot(Δ², Δ²))
+            @timeit_debug "σ" σ = abs.(dot(Δ², Δ¹) ./ dot(Δ², Δ²))
             @timeit_debug "X" @. X += 2σ * Δ¹ + σ^2 * Δ²
 
         elseif p == 3
@@ -66,14 +68,14 @@ function acx(
 
             @timeit_debug "Δ³" @. Δ³ = F³ - 3F² + 3F¹ - X
 
-            @timeit_debug "σ" σ = abs(dot(Δ³, Δ²) / dot(Δ³, Δ³))
+            @timeit_debug "σ" σ = abs.(dot(Δ³, Δ²) ./ dot(Δ³, Δ³))
             @timeit_debug "X" @. X += 3σ * Δ¹ + 3σ^2 * Δ² + σ^3 * Δ³
 
         end
     end
 
     i == maxiter && println("Didn't converge in $maxiter iterations.")
-    
+
     return (
         solution=F¹,
         trace=trace ? reduce(hcat, residual_history[1:i])' : nothing,

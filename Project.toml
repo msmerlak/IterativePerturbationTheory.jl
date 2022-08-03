@@ -5,6 +5,7 @@ version = "0.1.0"
 
 [deps]
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+Debugger = "31a5f54b-26ea-5ae9-a837-f05ce5417438"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 LinearMaps = "7a12625a-238d-50fd-b39a-03d52299707e"
 MKL = "33e6dc65-8f57-5167-99aa-e5a354878fb2"
