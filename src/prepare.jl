@@ -14,7 +14,7 @@ function lift_degeneracies!(A::AbstractMatrix, k, threshold = 1e-2)
         @timeit_debug "subspace diagonalize" p = eigen(a).vectors
         @timeit_debug "initialize rotation" P = SparseMatrixCSC{eltype(p)}(I, size(A)...)
         @timeit_debug "fill rotation" P[subspace, subspace] .= p
-        @timeit_debug "rotate in subspace" A .= hermitian ? P' * A * P : P \ A * P
+        @timeit_debug "rotate in subspace" A = hermitian ? P' * A * P : P \ A * P
         @timeit_debug "accumulate rotation" Q *= P
     end
     return Q
