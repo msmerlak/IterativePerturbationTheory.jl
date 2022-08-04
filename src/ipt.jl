@@ -1,21 +1,45 @@
 using NLsolve: fixedpoint
 using LinearAlgebra
 
+
+"""
+    ipt(M, k, X₀; kwargs...) -> (vectors, values, trace, iteration, matvec)
+
+Compute k eigenpairs of an N x N AbstractMatrix (or LinearMap) using Iterative Perturbation Theory, starting from the initial guess X₀. The method consists in the following step:
+
+- Optionally, check whether diag(M) has degeneracies (identical or near-identical elements). If so, lift the the degeneracies by diagonalizing M in the denegerate subspace using a direct method (eigen). 
+- Construct a quadratic map F whose fixed points X = F(X) are eigenmatrices of M, with the constraint that diag(X) = ones(N).
+- Compute X using fixed-point iteration, possibly using acceleration (Anderson Acceleration and Alternating Cyclic Acceleration are currently implemented).
+- Rotate X back to the canonical basis to account for preparation step. 
+
+Keyword arguments:
+
+* tol: tolerance for residual norm
+* acceleration: :acx for Anderson Acceleration, :acx for Alternating Cyclic Acceleration, or :none for simple Picard iteration
+* trace: whether to record residual norm history
+* lift_degeneracies: whether to check for and lift degeneracies
+* degeneracy_threshold: the distance between diagonal elements to declare them degenerate
+* maxiter: maximal number of iterations
+* acx_orders: an internal parameter for Alternating Cyclic Acceleration, either [3, 2] or [3, 3, 2]
+* anderson_memory: an internal parameter for Anderson Acceleration
+* timed: whether to time each step using TimerOutputs
+"""
+
 ipt(M, args...; kwargs...) = ipt!(copy(M), args...; kwargs...)
 
 function ipt!(
     M::Union{Matrix, SparseMatrixCSC, LinearMap},
-    k=size(M, 1), # number of eigenpairs requested
-    X₀=Matrix{eltype(M)}(I, size(M, 1), k); # initial eigenmatrix
-    tol= 1e-10, #100 * eps(real(eltype(M))) * norm(M),
-    acceleration=:acx,
-    trace=false,
-    acx_orders=[3, 2],
-    maxiter=1000,
-    anderson_memory=5,
-    timed=false,
-    lift_degeneracies = true,
-    degeneracy_threshold = 1e-1
+    k::Int=size(M, 1), 
+    X₀::AbstractMatrix=Matrix{eltype(M)}(I, size(M, 1), k); 
+    tol::Float64= 1e-10, 
+    acceleration::Symbol=:acx,
+    trace::Bool=false,
+    acx_orders::Vector{Int}=[3, 2],
+    maxiter::Int=1000,
+    anderson_memory::Int=5,
+    timed::Bool=false,
+    lift_degeneracies::Bool = true,
+    degeneracy_threshold::Float64 = 1e-1
 )
 
     timed && reset_timer!()
