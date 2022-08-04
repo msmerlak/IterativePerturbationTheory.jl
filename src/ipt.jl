@@ -51,7 +51,7 @@ function ipt!(
         N = size(M, 1)
         T = eltype(M)
         #@timeit_debug "build d" d = (diagonal == nothing) ? view(M, diagind(M)) : diagonal
-        @timeit_debug "sort diagonal" if sort_diagonal && !(typeof(L) <: LinearMapAX) s = sort_diag!(M) end
+        @timeit_debug "sort diagonal" if sort_diagonal && !(typeof(M) <: LinearMapAX) s = sort_diag!(M) end
         @timeit_debug "lift degeneracies" if lift_degeneracies Q = lift_degeneracies!(M, k, degeneracy_threshold) else Q = I end
         @timeit_debug "build D" begin
             diagonal=diag(M)
