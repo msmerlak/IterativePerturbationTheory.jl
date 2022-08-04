@@ -1,5 +1,3 @@
-using LinearAlgebra, SparseArrays
-
 
 """
     lift_degeneracies!(A) -> Q, s
@@ -8,30 +6,29 @@ Sort diagonal elements, check for degeneracies, lift them with subspace diagonal
 """
 
 function lift_degeneracies!(A::AbstractMatrix, k, threshold = 1e-2)
-    s = sort_diag!(A)
-    d = view(A, diagind(A))
-    hermitian = ishermitian(A)
-    Q = SparseMatrixCSC{complex(eltype(A))}(I, size(A)...)
-    for subspace in degenerate_subspaces(d, k, threshold)
-        a = Matrix(view(A, subspace, subspace))
-        p = eigen(a).vectors
-        P = SparseMatrixCSC{complex(eltype(A))}(I, size(A)...)
-        P[subspace, subspace] .= p
-        A .= hermitian ? P' * A * P : P \ A * P
-        Q *= P
+    @timeit_debug "test hermitian" hermitian = ishermitian(A)
+    Q = SparseMatrixCSC{eltype(A)}(I, size(A)...)
+
+    for subspace in degenerate_subspaces(view(A, diagind(A)), k, threshold)
+        @timeit_debug "extract submatrix" a = Matrix(view(A, subspace, subspace))
+        @timeit_debug "subspace diagonalize" p = eigen(a).vectors
+        @timeit_debug "initialize rotation" P = SparseMatrixCSC{eltype(p)}(I, size(A)...)
+        @timeit_debug "fill rotation" P[subspace, subspace] .= p
+        @timeit_debug "rotate in subspace" A .= hermitian ? P' * A * P : P \ A * P
+        @timeit_debug "accumulate rotation" Q *= P
     end
-    return Q, s
+    return Q
 end
 
 
-function sort_diag!(A)
+function sort_diag!(A::AbstractMatrix)
     d = view(A, diagind(A))
     s = sortperm(d)
     A .= A[s, s]
     return s
 end
 
-function degenerate_subspaces(d, k, threshold)
+function degenerate_subspaces(d::SubArray, k, threshold)
     n = length(d)
     subspaces = UnitRange{Int}[]
     

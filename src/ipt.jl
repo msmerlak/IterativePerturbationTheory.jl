@@ -25,10 +25,10 @@ Keyword arguments:
 * timed: whether to time each step using TimerOutputs
 """
 
-ipt(M, args...; kwargs...) = ipt!(copy(M), args...; kwargs...)
+ipt(M::Matrix, args...; kwargs...) = ipt!(copy(M), args...; kwargs...)
 
 function ipt!(
-    M::Union{Matrix, SparseMatrixCSC, LinearMap},
+    M::Union{AbstractMatrix, LinearMap},
     k::Int=size(M, 1), 
     X₀::AbstractMatrix=Matrix{eltype(M)}(I, size(M, 1), k); 
     tol::Float64= 1e-10, 
@@ -38,10 +38,12 @@ function ipt!(
     maxiter::Int=1000,
     anderson_memory::Int=5,
     timed::Bool=false,
+    sort_diagonal::Bool = true,
     lift_degeneracies::Bool = true,
     degeneracy_threshold::Float64 = 1e-1
 )
 
+    if M isa LinearMap M = LinearMapAA(M) end
     timed && reset_timer!()
 
 
@@ -49,7 +51,8 @@ function ipt!(
         N = size(M, 1)
         T = eltype(M)
         #@timeit_debug "build d" d = (diagonal == nothing) ? view(M, diagind(M)) : diagonal
-        @timeit_debug "lift degeneracies" if lift_degeneracies Q, s = lift_degeneracies!(M, k, degeneracy_threshold) else Q = I end
+        @timeit_debug "sort diagonal" if lift_degeneracies s = sort_diag!(A) end
+        @timeit_debug "lift degeneracies" if lift_degeneracies Q = lift_degeneracies!(M, k, degeneracy_threshold) else Q = I end
         @timeit_debug "build D" begin
             diagonal=diag(M)
             D = Diagonal(diagonal)

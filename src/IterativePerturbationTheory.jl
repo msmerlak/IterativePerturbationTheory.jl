@@ -3,7 +3,8 @@ module IterativePerturbationTheory
 export ipt, ipt!
 export lift_degeneracies!
 
-using LinearAlgebra, LinearMaps, SparseArrays
+using LinearAlgebra, SparseArrays
+using LinearMaps, LinearMapsAA
 using TimerOutputs
 
 include("utils.jl")
