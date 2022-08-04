@@ -25,7 +25,7 @@ Keyword arguments:
 * timed: whether to time each step using TimerOutputs
 """
 
-ipt(M::Matrix, args...; kwargs...) = ipt!(copy(M), args...; kwargs...)
+ipt(M::Matrix, k, X₀; kwargs...) = ipt!(copy(M), k, copy(X₀); kwargs...)
 
 function ipt!(
     M::Union{AbstractMatrix, LinearMap},
@@ -44,36 +44,17 @@ function ipt!(
 )
 
     if M isa LinearMap M = LinearMapAA(M) end
+
     timed && reset_timer!()
 
 
-    @timeit_debug "preparation" begin
-        N = size(M, 1)
-        T = eltype(M)
-        #@timeit_debug "build d" d = (diagonal == nothing) ? view(M, diagind(M)) : diagonal
-        @timeit_debug "sort diagonal" if sort_diagonal && !(typeof(M) <: LinearMapAX) s = sort_diag!(M) end
-        @timeit_debug "lift degeneracies" if lift_degeneracies Q = lift_degeneracies!(M, k, degeneracy_threshold) else Q = I end
-        @timeit_debug "build D" begin
-            diagonal=diag(M)
-            D = Diagonal(diagonal)
-        end
-        @timeit_debug "build G" G = one(T) ./ (transpose(view(diagonal, 1:k)) .- view(diagonal, :))
-    end
+    @timeit_debug "preparation" D, G, T, Q = preparation(M, k, sort_diagonal, lift_degeneracies, degeneracy_threshold)
 
-    function F!(Y, X)
-        @timeit_debug "matrix product" mul!(Y, M, X)
-        @timeit_debug "residuals" R  = vec(mapslices(norm, Y .- X * Diagonal(Y); dims=1))
-        @timeit_debug "diagonal product 1" mul!(Y, D, X, -one(T), one(T))
-        @timeit_debug "diagonal product 2" mul!(Y, X, Diagonal(Y), -one(T), one(T))
-        @timeit_debug "hadamard product" Y .*= G
-        @timeit_debug "reset diagonal" Y[diagind(Y)] .= one(T)
-        return R
-    end
+    F!(Y, X) = quadratic!(Y, X, M, D, G, T)
 
     if acceleration == :acx
 
         @timeit_debug "iteration" sol = acx(F!, X₀; tol=tol, orders=acx_orders, trace=trace, maxiter=maxiter, matrix=M)
-
 
         @timeit_debug "rotating back" X = Q * sol.solution
 
@@ -102,11 +83,9 @@ function ipt!(
 
     elseif acceleration == :none
 
-        X = copy(X₀)
+        X = X₀
         Y = similar(X)
         i = 0
-
-
 
         matvecs = Vector{Int}(undef, maxiter)
         if trace
@@ -121,7 +100,6 @@ function ipt!(
             @timeit_debug "update current vector" X .= Y
             matvecs[i] = i == 1 ? k : matvecs[i - 1] + k 
 
-            
 
             if trace
                 residual_history[i] = R
@@ -144,4 +122,39 @@ function ipt!(
         )
 
     end
+end
+
+function preparation(M::AbstractMatrix, k, sort_diagonal, lift_degeneracies, degeneracy_threshold)
+        N = size(M, 1)
+        T = eltype(M)
+
+        @timeit_debug "sort diagonal" if sort_diagonal && !(typeof(M) <: LinearMapAX) s = sort_diag!(M) end
+        @timeit_debug "lift degeneracies" if lift_degeneracies Q = lift_degeneracies!(M, k, degeneracy_threshold) else Q = I end
+        @timeit_debug "build D" D = Diagonal(M)
+        @timeit_debug "build G" G = one(T) ./ (transpose(view(D, diagind(D)[1:k])) .- view(D, diagind(D)))
+        return D, G, T, Q
+end
+
+function quadratic!(Y, X, M::Union{Matrix, SparseMatrixCSC}, D, G, T)
+
+
+    @timeit_debug "matrix product" mul!(Y, M, X)
+    @timeit_debug "residuals" R  = vec(mapslices(norm, Y .- X * Diagonal(Y); dims=1))
+    @timeit_debug "diagonal product 1" mul!(Y, D, X, -one(T), one(T))
+    @timeit_debug "diagonal product 2" mul!(Y, X, Diagonal(Y), -one(T), one(T))
+    @timeit_debug "hadamard product" Y .*= G
+    @timeit_debug "reset diagonal" Y[diagind(Y)] .= one(T)
+    return R
+end
+
+function quadratic!(Y, X, M::LinearMapAX, D, G, T)
+
+
+    @timeit_debug "matrix product" Y .= Matrix(M * X)
+    @timeit_debug "residuals" R  = vec(mapslices(norm, Y .- X * Diagonal(Y); dims=1))
+    @timeit_debug "diagonal product 1" mul!(Y, D, X, -one(T), one(T))
+    @timeit_debug "diagonal product 2" mul!(Y, X, Diagonal(Y), -one(T), one(T))
+    @timeit_debug "hadamard product" Y .*= G
+    @timeit_debug "reset diagonal" Y[diagind(Y)] .= one(T)
+    return R
 end
