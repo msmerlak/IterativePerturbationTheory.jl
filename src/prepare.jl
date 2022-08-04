@@ -9,7 +9,7 @@ function lift_degeneracies!(M::AbstractMatrix, k, threshold = 1e-2)
     @timeit_debug "test hermitian" hermitian = ishermitian(M)
     Q = SparseMatrixCSC{eltype(M)}(I, size(M)...)
 
-    for subspace in degenerate_subspaces(diag(M), k, threshold)
+    for subspace in degenerate_subspaces(view(M, diagind(M)), k, threshold)
         @timeit_debug "extract submatrix" a = Matrix(view(M, subspace, subspace))
         @timeit_debug "subspace diagonalize" p = eigen(a).vectors
         @timeit_debug "initialize rotation" P = SparseMatrixCSC{eltype(p)}(I, size(M)...)
