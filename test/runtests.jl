@@ -22,7 +22,7 @@ for A in (M, S)
 end
 
 
-@time @testset "Degenerate eigenvalues" begin
+@testset "Degenerate eigenvalues" begin
     A = diagm([1, 1, 2]) + 1e-2rand(3, 3)
     eig = eigen(A)
     Z = ipt(A; tol=TOL)

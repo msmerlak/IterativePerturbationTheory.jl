@@ -1,6 +1,7 @@
 module IterativePerturbationTheory
 
-export ipt
+export ipt, ipt!
+export lift_degeneracies!
 
 using LinearAlgebra, LinearMaps, SparseArrays
 using TimerOutputs

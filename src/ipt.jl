@@ -1,7 +1,9 @@
 using NLsolve: fixedpoint
 using LinearAlgebra
 
-function ipt(
+ipt(M, args...; kwargs...) = ipt!(copy(M), args...; kwargs...)
+
+function ipt!(
     M::Union{Matrix, SparseMatrixCSC, LinearMap},
     k=size(M, 1), # number of eigenpairs requested
     X₀=Matrix{eltype(M)}(I, size(M, 1), k); # initial eigenmatrix
@@ -12,7 +14,6 @@ function ipt(
     maxiter=1000,
     anderson_memory=5,
     timed=false,
-    diagonal=diag(M),
     lift_degeneracies = true,
     degeneracy_threshold = 1e-1
 )
@@ -26,7 +27,7 @@ function ipt(
         #@timeit_debug "build d" d = (diagonal == nothing) ? view(M, diagind(M)) : diagonal
         @timeit_debug "lift degeneracies" if lift_degeneracies Q, s = lift_degeneracies!(M, degeneracy_threshold) else Q = I end
         @timeit_debug "build D" begin
-            diagonal=diagonal[s]
+            diagonal=diag(M)
             D = Diagonal(diagonal)
         end
         @timeit_debug "build G" G = one(T) ./ (transpose(view(diagonal, 1:k)) .- view(diagonal, :))
@@ -46,10 +47,13 @@ function ipt(
 
         @timeit_debug "iteration" sol = acx(F!, X₀; tol=tol, orders=acx_orders, trace=trace, maxiter=maxiter, matrix=M)
 
+
+        @timeit_debug "rotating back" X = Q * sol.solution
+
         timed && print_timer()
 
         return (
-                vectors= Q * sol.solution,
+                vectors= X,
                 values=diag(M * sol.solution),
                 trace=sol.trace,
                 iterations=sol.f_calls,
@@ -60,10 +64,11 @@ function ipt(
 
         sol = fixedpoint(F!, X₀; method=:anderson, ftol=tol, store_trace=trace, m=anderson_memory, iterations = maxiter)
 
+        @timeit_debug "rotating back" X = Q * sol.zero
         timed && print_timer()
 
         return (
-            vectors= Q * sol.zero,
+            vectors= Q * X,
             values=diag(M * sol.zero),
             trace=trace ? [sol.trace[i].fnorm for i in 1:sol.iterations] : nothing
         )
@@ -113,4 +118,3 @@ function ipt(
 
     end
 end
-
