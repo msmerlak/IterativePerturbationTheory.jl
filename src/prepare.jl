@@ -7,15 +7,15 @@ using LinearAlgebra, SparseArrays
 Sort diagonal elements, check for degeneracies, lift them with subspace diagonalization. Return the rotation matrix such that A' = Q^-1 * A * Q. 
 """
 
-function lift_degeneracies!(A::AbstractMatrix, threshold = 1e-2)
+function lift_degeneracies!(A::AbstractMatrix, k, threshold = 1e-2)
     s = sort_diag!(A)
-    d = diag(A)
+    d = view(A, diagind(A))
     hermitian = ishermitian(A)
-    Q = SparseMatrixCSC{eltype(A)}(I, size(A)...)
-    for subspace in degenerate_subspaces(d, threshold)
+    Q = SparseMatrixCSC{complex(eltype(A))}(I, size(A)...)
+    for subspace in degenerate_subspaces(d, k, threshold)
         a = Matrix(view(A, subspace, subspace))
         p = eigen(a).vectors
-        P = SparseMatrixCSC{eltype(A)}(I, size(A)...)
+        P = SparseMatrixCSC{complex(eltype(A))}(I, size(A)...)
         P[subspace, subspace] .= p
         A .= hermitian ? P' * A * P : P \ A * P
         Q *= P
@@ -23,31 +23,31 @@ function lift_degeneracies!(A::AbstractMatrix, threshold = 1e-2)
     return Q, s
 end
 
+
 function sort_diag!(A)
-    d = diag(A)
+    d = view(A, diagind(A))
     s = sortperm(d)
     A .= A[s, s]
     return s
 end
 
-function degenerate_subspaces(d, threshold)
+function degenerate_subspaces(d, k, threshold)
     n = length(d)
     subspaces = UnitRange{Int}[]
     
-    head = 1
-    tail = undef
+    head = tail = 1
     degenerate = false
-    for i in 1:n-1
-        if abs(d[i] - d[i+1]) < threshold
+    while head <= k && tail <= n-1
+        if abs(d[tail] - d[tail+1]) < threshold
             degenerate = true
-            tail = i+1
+            tail += 1
         else
-            if degenerate push!(subspaces, head:tail) end
+            degenerate && push!(subspaces, head:tail)
             degenerate = false
-            head = i + 1
+            head = tail =  tail + 1
         end
     end
-    if degenerate push!(subspaces, head:tail) end
+    degenerate && push!(subspaces, head:tail)
     return subspaces
 end
 
