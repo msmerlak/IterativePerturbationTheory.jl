@@ -13,7 +13,7 @@ function lift_degeneracies!(A::AbstractMatrix, threshold = 1e-2)
     hermitian = ishermitian(A)
     Q = SparseMatrixCSC{eltype(A)}(I, size(A)...)
     for subspace in degenerate_subspaces(d, threshold)
-        a = view(A, subspace, subspace)
+        a = Matrix(view(A, subspace, subspace))
         p = eigen(a).vectors
         P = SparseMatrixCSC{eltype(A)}(I, size(A)...)
         P[subspace, subspace] .= p
