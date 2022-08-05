@@ -25,9 +25,8 @@ Keyword arguments:
 * timed: whether to time each step using TimerOutputs
 """
 
-ipt(M::Matrix, k, X₀; kwargs...) = ipt!(copy(M), k, copy(X₀); kwargs...)
 
-function ipt!(
+function ipt(
     M::Union{AbstractMatrix, LinearMap},
     k::Int=size(M, 1), 
     X₀::AbstractMatrix=Matrix{eltype(M)}(I, size(M, 1), k); 
@@ -48,7 +47,8 @@ function ipt!(
     timed && reset_timer!()
 
 
-    @timeit_debug "preparation" D, G, T, Q = preparation(M, k, sort_diagonal, lift_degeneracies, degeneracy_threshold)
+    @timeit_debug "preparation" M, D, G, T, Q = preparation(M, k, sort_diagonal, lift_degeneracies, degeneracy_threshold)
+
 
     F!(Y, X) = quadratic!(Y, X, M, D, G, T)
 
@@ -56,7 +56,7 @@ function ipt!(
 
         @timeit_debug "iteration" sol = acx(F!, X₀; tol=tol, orders=acx_orders, trace=trace, maxiter=maxiter, matrix=M)
 
-        @timeit_debug "rotating back" X = Q * sol.solution
+        @timeit_debug "rotate back" X = Q * sol.solution
 
         timed && print_timer()
 
@@ -72,11 +72,12 @@ function ipt!(
 
         sol = fixedpoint(F!, X₀; method=:anderson, ftol=tol, store_trace=trace, m=anderson_memory, iterations = maxiter)
 
-        @timeit_debug "rotating back" X = Q * sol.zero
+        @timeit_debug "rotate back" X = Q * sol.zero
+
         timed && print_timer()
 
         return (
-            vectors= Q * X,
+            vectors= X,
             values=diag(M * sol.zero),
             trace=trace ? [sol.trace[i].fnorm for i in 1:sol.iterations] : nothing
         )
@@ -110,12 +111,13 @@ function ipt!(
         end
 
 
+        
         timed && print_timer()
 
         i == maxiter && println("Didn't converge in $maxiter iterations.")
 
         return (
-            vectors= Q * X,
+            vectors=  Q* X,
             values=diag(M * X),
             matvecs=trace ? matvecs[1:i] : nothing,
             trace=trace ? reduce(hcat, residual_history[1:i])' : nothing
@@ -124,16 +126,6 @@ function ipt!(
     end
 end
 
-function preparation(M::AbstractMatrix, k, sort_diagonal, lift_degeneracies, degeneracy_threshold)
-        N = size(M, 1)
-        T = eltype(M)
-
-        @timeit_debug "sort diagonal" if sort_diagonal && !(typeof(M) <: LinearMapAX) s = sort_diag!(M) end
-        @timeit_debug "lift degeneracies" if lift_degeneracies Q = lift_degeneracies!(M, k, degeneracy_threshold) else Q = I end
-        @timeit_debug "build D" D = Diagonal(M)
-        @timeit_debug "build G" G = one(T) ./ (transpose(view(D, diagind(D)[1:k])) .- view(D, diagind(D)))
-        return D, G, T, Q
-end
 
 function quadratic!(Y, X, M::Union{Matrix, SparseMatrixCSC}, D, G, T)
 

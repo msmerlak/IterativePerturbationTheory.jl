@@ -8,7 +8,7 @@ using LinearMaps, LinearMapsAA
 using TimerOutputs
 
 #include("utils.jl")
-include("prepare.jl")
+include("preparation.jl")
 include("acx.jl")
 include("ipt.jl")
 include("ipt_cuda.jl")
