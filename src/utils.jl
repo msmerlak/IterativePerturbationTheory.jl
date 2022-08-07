@@ -1,5 +1,4 @@
-
-
+import LinearAlgebra:diag
 e(i, m) = sparsevec([i], [1.], m)
 
 function diag(L::LinearMap)

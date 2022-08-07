@@ -7,7 +7,7 @@ using LinearAlgebra, SparseArrays
 using LinearMaps, LinearMapsAA
 using TimerOutputs
 
-#include("utils.jl")
+include("utils.jl")
 include("preparation.jl")
 include("acx.jl")
 include("ipt.jl")
