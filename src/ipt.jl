@@ -39,16 +39,19 @@ function ipt(
     timed::Bool=false,
     sort_diagonal::Bool = true,
     lift_degeneracies::Bool = true,
-    degeneracy_threshold::Float64 = 1e-1
+    degeneracy_threshold::Float64 = 1e-1,
+    diagonal::Vector=diag(M)
 )
 
     if M isa LinearMap M = LinearMapAA(M) end
 
+    
     timed && reset_timer!()
 
-
-    @timeit_debug "preparation" M, D, G, T, Q = preparation(M, k, sort_diagonal, lift_degeneracies, degeneracy_threshold)
-
+    @timeit_debug "preparation" begin
+        D = Diagonal(diagonal)
+        M, G, T, Q = preparation(M, diagonal, k, sort_diagonal, lift_degeneracies, degeneracy_threshold)
+    end
 
     F!(Y, X) = quadratic!(Y, X, M, D, G, T)
 

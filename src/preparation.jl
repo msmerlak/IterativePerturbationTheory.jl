@@ -1,11 +1,11 @@
 
 
 
-function preparation(M::AbstractMatrix, k, sort_diagonal, lift_degeneracies, degeneracy_threshold)
+function preparation(M::AbstractMatrix, diagonal, k, sort_diagonal, lift_degeneracies, degeneracy_threshold)
     N = size(M, 1)
     T = eltype(M)
 
-    @timeit_debug "sort diagonal" if sort_diagonal && !(M isa LinearMapAX) s = sort_diag!(M) end
+    @timeit_debug "sort diagonal" if sort_diagonal && !(M isa LinearMapAX) s = sort_diag!(M, diagonal) end
     if lift_degeneracies
         @timeit_debug "lift degeneracies" begin
             Q = local_rotations(M, k, degeneracy_threshold)
@@ -14,9 +14,8 @@ function preparation(M::AbstractMatrix, k, sort_diagonal, lift_degeneracies, deg
     else
         Q = I
     end
-    @timeit_debug "build D" D = Diagonal(M)
-    @timeit_debug "build G" G = one(T) ./ (transpose(view(D, diagind(D)[1:k])) .- view(D, diagind(D)))
-    return M, D, G, T, Q
+    @timeit_debug "build G" G = one(T) ./ (transpose(view(diagonal, 1:k)) .- diagonal)
+    return M, G, T, Q
 end
 
 function local_rotations(M::AbstractMatrix, k, threshold = 1e-2)
@@ -31,9 +30,8 @@ function local_rotations(M::AbstractMatrix, k, threshold = 1e-2)
 end
 
 
-function sort_diag!(M::AbstractMatrix)
-    d = view(M, diagind(M))
-    s = sortperm(d)
+function sort_diag!(M::AbstractMatrix, diagonal::Vector)
+    s = sortperm(diagonal)
     M .= M[s, s]
     return s
 end
