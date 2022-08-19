@@ -25,7 +25,7 @@ Keyword arguments:
 * timed: whether to time each step using TimerOutputs
 """
 
-ipt(M, k=size(M, 1), X₀=Matrix{eltype(M)}(I, size(M, 1), k); kwargs...) = ipt!(copy(M), k, X₀; kwargs...)
+ipt(M, k=size(M, 1), X₀=Matrix{eltype(M)}(I, size(M, 1), k); kwargs...) = ipt!(deepcopy(M), k, X₀; kwargs...)
 
 function ipt!(
     M::Union{AbstractMatrix, LinearMap},
@@ -49,7 +49,7 @@ function ipt!(
     timed && reset_timer!()
 
     @timeit_debug "preparation" begin
-        D, G, T, Q = prepare!(M, diagonal, k, sort_diagonal, lift_degeneracies, degeneracy_threshold)
+        M, D, G, T, Q = prepare(M, diagonal, k, sort_diagonal, lift_degeneracies, degeneracy_threshold)
     end
 
     F!(Y, X) = quadratic!(Y, X, M, D, G, T)

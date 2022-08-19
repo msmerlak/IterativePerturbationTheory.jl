@@ -1,4 +1,7 @@
-function prepare!(M::Union{Matrix, SparseMatrixCSC}, diagonal, k, sort_diagonal, lift_degeneracies, degeneracy_threshold)
+
+
+
+function prepare(M::Union{AbstractMatrix, LinearMapAX}, diagonal, k, sort_diagonal, lift_degeneracies, degeneracy_threshold)
     N = size(M, 1)
     T = eltype(M)
 
@@ -6,39 +9,23 @@ function prepare!(M::Union{Matrix, SparseMatrixCSC}, diagonal, k, sort_diagonal,
     if lift_degeneracies
         @timeit_debug "lift degeneracies" begin
             Q = local_rotations(M, diagonal, k, degeneracy_threshold)
-            M .= ishermitian(M) ? Q' * M * Q : Q \ M * Q
+            M = ishermitian(M) ? Q' * M * Q : Q \ Matrix(M * Q)
         end
     else
         Q = I
     end
     d = view(M, diagind(M))
     @timeit_debug "build G" G = one(T) ./ (transpose(d[1:k]) .- d)
-    return Diagonal(d), G, T, Q
+    return M, Diagonal(d), G, T, Q
 end
 
-function prepare!(M::LinearMapAX, diagonal, k, sort_diagonal, lift_degeneracies, degeneracy_threshold)
-    N = size(M, 1)
-    T = eltype(M)
-
-    if lift_degeneracies
-        @timeit_debug "lift degeneracies" begin
-            Q = local_rotations(M, diagonal, k, degeneracy_threshold)
-            M = ishermitian(M) ? Q' * M * Q : Q \ M * Q
-        end
-    else
-        Q = I
-    end
-    d = diag(M)
-    @timeit_debug "build G" G = one(T) ./ (transpose(d[1:k]) .- d)
-    return Diagonal(d), G, T, Q
-end
 
 
 function local_rotations(M::Union{Matrix, SparseMatrixCSC}, diagonal, k, threshold = 1e-2)
     
     Q = SparseMatrixCSC{eltype(M)}(I, size(M)...)
     for subspace in degenerate_subspaces(diagonal, k, threshold)
-        Q[subspace, subspace] .= eigen( Matrix(view(M, subspace, subspace)) ).vectors
+        Q[subspace, subspace] .= eigen( Array(view(M, subspace, subspace)) ).vectors
         
     end
     return Q
@@ -49,7 +36,7 @@ function local_rotations(M::LinearMapAX, diagonal, k, threshold = 1e-2)
     Q = SparseMatrixCSC{eltype(M)}(I, size(M)...)
 
     for subspace in degenerate_subspaces(diagonal, k, threshold)
-        Q[subspace, subspace] .= eigen( Matrix(view(M, subspace, subspace)) ).vectors
+        Q[subspace, subspace] .= eigen( Array(view(M, subspace, subspace)) ).vectors
     end
     return Q
 end
