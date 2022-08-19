@@ -1,7 +1,7 @@
 
 
 
-function preparation(M::AbstractMatrix, diagonal, k, sort_diagonal, lift_degeneracies, degeneracy_threshold)
+function prepare(M::AbstractMatrix, diagonal, k, sort_diagonal, lift_degeneracies, degeneracy_threshold)
     N = size(M, 1)
     T = eltype(M)
 

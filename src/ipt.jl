@@ -50,7 +50,7 @@ function ipt(
 
     @timeit_debug "preparation" begin
         D = Diagonal(diagonal)
-        M, G, T, Q = preparation(M, diagonal, k, sort_diagonal, lift_degeneracies, degeneracy_threshold)
+        M, G, T, Q = prepare(M, diagonal, k, sort_diagonal, lift_degeneracies, degeneracy_threshold)
     end
 
     F!(Y, X) = quadratic!(Y, X, M, D, G, T)
