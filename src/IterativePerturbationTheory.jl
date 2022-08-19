@@ -1,7 +1,6 @@
 module IterativePerturbationTheory
 
 export ipt, ipt!
-export preparation
 
 using LinearAlgebra, SparseArrays
 using LinearMaps, LinearMapsAA

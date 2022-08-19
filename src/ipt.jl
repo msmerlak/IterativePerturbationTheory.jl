@@ -25,8 +25,9 @@ Keyword arguments:
 * timed: whether to time each step using TimerOutputs
 """
 
+ipt(M, k=size(M, 1), X₀=Matrix{eltype(M)}(I, size(M, 1), k); kwargs...) = ipt!(copy(M), k, X₀; kwargs...)
 
-function ipt(
+function ipt!(
     M::Union{AbstractMatrix, LinearMap},
     k::Int=size(M, 1), 
     X₀::AbstractMatrix=Matrix{eltype(M)}(I, size(M, 1), k); 
@@ -44,13 +45,11 @@ function ipt(
 )
 
     if M isa LinearMap M = LinearMapAA(M) end
-
     
     timed && reset_timer!()
 
     @timeit_debug "preparation" begin
-        D = Diagonal(diagonal)
-        M, G, T, Q = prepare(M, diagonal, k, sort_diagonal, lift_degeneracies, degeneracy_threshold)
+        D, G, T, Q = prepare!(M, diagonal, k, sort_diagonal, lift_degeneracies, degeneracy_threshold)
     end
 
     F!(Y, X) = quadratic!(Y, X, M, D, G, T)
@@ -132,13 +131,13 @@ end
 
 function quadratic!(Y, X, M::Union{Matrix, SparseMatrixCSC}, D, G, T)
 
-
     @timeit_debug "matrix product" mul!(Y, M, X)
     @timeit_debug "residuals" R  = vec(mapslices(norm, Y .- X * Diagonal(Y); dims=1))
     @timeit_debug "diagonal product 1" mul!(Y, D, X, -one(T), one(T))
     @timeit_debug "diagonal product 2" mul!(Y, X, Diagonal(Y), -one(T), one(T))
     @timeit_debug "hadamard product" Y .*= G
     @timeit_debug "reset diagonal" Y[diagind(Y)] .= one(T)
+
     return R
 end
 

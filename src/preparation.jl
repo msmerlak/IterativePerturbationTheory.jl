@@ -1,19 +1,38 @@
-function prepare(M::AbstractMatrix, diagonal, k, sort_diagonal, lift_degeneracies, degeneracy_threshold)
+function prepare!(M::Union{Matrix, SparseMatrixCSC}, diagonal, k, sort_diagonal, lift_degeneracies, degeneracy_threshold)
     N = size(M, 1)
     T = eltype(M)
 
-    @timeit_debug "sort diagonal" if sort_diagonal s = sort_diag!(M, diagonal) end
+    @timeit_debug "sort diagonal" if sort_diagonal sort_diag!(M, diagonal) end
     if lift_degeneracies
         @timeit_debug "lift degeneracies" begin
             Q = local_rotations(M, diagonal, k, degeneracy_threshold)
-            M = (M' ≈ M) ? Q' * M * Q : Q \ M * Q
+            M .= ishermitian(M) ? Q' * M * Q : Q \ M * Q
         end
     else
         Q = I
     end
-    @timeit_debug "build G" G = one(T) ./ (transpose(view(diagonal, 1:k)) .- diagonal)
-    return M, G, T, Q
+    d = view(M, diagind(M))
+    @timeit_debug "build G" G = one(T) ./ (transpose(d[1:k]) .- d)
+    return Diagonal(d), G, T, Q
 end
+
+function prepare!(M::LinearMapAX, diagonal, k, sort_diagonal, lift_degeneracies, degeneracy_threshold)
+    N = size(M, 1)
+    T = eltype(M)
+
+    if lift_degeneracies
+        @timeit_debug "lift degeneracies" begin
+            Q = local_rotations(M, diagonal, k, degeneracy_threshold)
+            M = ishermitian(M) ? Q' * M * Q : Q \ M * Q
+        end
+    else
+        Q = I
+    end
+    d = diag(M)
+    @timeit_debug "build G" G = one(T) ./ (transpose(d[1:k]) .- d)
+    return Diagonal(d), G, T, Q
+end
+
 
 function local_rotations(M::Union{Matrix, SparseMatrixCSC}, diagonal, k, threshold = 1e-2)
     
