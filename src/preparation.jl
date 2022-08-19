@@ -40,7 +40,7 @@ function local_rotations(M::LinearMapAX, diagonal, k, threshold = 1e-2)
     return Q
 end
 
-function sort_diag!(M::AbstractMatrix, diagonal::Vector)
+function sort_diag!(M::AbstractMatrix, diagonal::AbstractVector)
     s = sortperm(diagonal)
     M .= M[s, s]
     return s

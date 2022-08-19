@@ -1,6 +1,7 @@
 using Test
 using LinearAlgebra, LinearMaps
 using IterativePerturbationTheory
+using SparseArrays
 
 N = 1000
 M = diagm(1:N) + 1e-2rand(N, N)
@@ -19,6 +20,15 @@ for A in (M, S)
             @test A * Z.vectors ≈ Z.vectors * Diagonal(Z.values)
         end
     end
+end
+
+
+@testset "Sparse Array" begin
+    S = spdiagm(1:N) + .1*sprand(N,N, .01)
+    eig = eigen(Matrix(S))
+    Z = ipt(S; tol = TOL, lift_degeneracies = true)
+    @test Z.values ≈ eig.values
+    @test norm(Matrix(L * Z.vectors - Z.vectors * Diagonal(Z.values))) < 10TOL
 end
 
 @testset "Linear Map" begin

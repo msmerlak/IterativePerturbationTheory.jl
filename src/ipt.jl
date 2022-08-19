@@ -40,7 +40,7 @@ function ipt(
     sort_diagonal::Bool = true,
     lift_degeneracies::Bool = true,
     degeneracy_threshold::Float64 = 1e-1,
-    diagonal::Vector=diag(M)
+    diagonal::AbstractVector=diag(M)
 )
 
     if M isa LinearMap M = LinearMapAA(M) end
