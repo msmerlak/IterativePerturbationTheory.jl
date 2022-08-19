@@ -1,15 +1,12 @@
-
-
-
 function prepare(M::AbstractMatrix, diagonal, k, sort_diagonal, lift_degeneracies, degeneracy_threshold)
     N = size(M, 1)
     T = eltype(M)
 
-    @timeit_debug "sort diagonal" if sort_diagonal && !(M isa LinearMapAX) s = sort_diag!(M, diagonal) end
+    @timeit_debug "sort diagonal" if sort_diagonal s = sort_diag!(M, diagonal) end
     if lift_degeneracies
         @timeit_debug "lift degeneracies" begin
-            Q = local_rotations(M, k, degeneracy_threshold)
-            M = ishermitian(M) ? Q' * M * Q : Q \ M * Q
+            Q = local_rotations(M, diagonal, k, degeneracy_threshold)
+            M = (M' ≈ M) ? Q' * M * Q : Q \ M * Q
         end
     else
         Q = I
@@ -20,18 +17,16 @@ end
 
 function local_rotations(M::Union{Matrix, SparseMatrixCSC}, diagonal, k, threshold = 1e-2)
     
-    hermitian = ishermitian(M)
     Q = SparseMatrixCSC{eltype(M)}(I, size(M)...)
-
     for subspace in degenerate_subspaces(diagonal, k, threshold)
         Q[subspace, subspace] .= eigen( Matrix(view(M, subspace, subspace)) ).vectors
+        
     end
     return Q
 end
 
 function local_rotations(M::LinearMapAX, diagonal, k, threshold = 1e-2)
     
-    hermitian = ishermitian(M)
     Q = SparseMatrixCSC{eltype(M)}(I, size(M)...)
 
     for subspace in degenerate_subspaces(diagonal, k, threshold)
