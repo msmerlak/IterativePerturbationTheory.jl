@@ -18,17 +18,27 @@ function preparation(M::AbstractMatrix, diagonal, k, sort_diagonal, lift_degener
     return M, G, T, Q
 end
 
-function local_rotations(M::AbstractMatrix, k, threshold = 1e-2)
+function local_rotations(M::Union{Matrix, SparseMatrixCSC}, diagonal, k, threshold = 1e-2)
     
     hermitian = ishermitian(M)
     Q = SparseMatrixCSC{eltype(M)}(I, size(M)...)
 
-    for subspace in degenerate_subspaces(view(M, diagind(M)), k, threshold)
+    for subspace in degenerate_subspaces(diagonal, k, threshold)
         Q[subspace, subspace] .= eigen( Matrix(view(M, subspace, subspace)) ).vectors
     end
     return Q
 end
 
+function local_rotations(M::LinearMapAX, diagonal, k, threshold = 1e-2)
+    
+    hermitian = ishermitian(M)
+    Q = SparseMatrixCSC{eltype(M)}(I, size(M)...)
+
+    for subspace in degenerate_subspaces(diagonal, k, threshold)
+        Q[subspace, subspace] .= eigen( Matrix(view(M, subspace, subspace)) ).vectors
+    end
+    return Q
+end
 
 function sort_diag!(M::AbstractMatrix, diagonal::Vector)
     s = sortperm(diagonal)
