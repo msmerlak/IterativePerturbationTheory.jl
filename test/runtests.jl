@@ -28,9 +28,10 @@ end
 
 @testset "Degenerate eigenvalues (H20)" begin
     eig = eigen(W)
+    nev = 10
     for A in (W, sparse(W), LinearMap(W))
-        Z = ipt(A, 5; tol = TOL, sort_diagonal = false, lift_degeneracies = true)
-        @test Z.values ≈ eig.values[1:5]
+        Z = ipt(A, nev; tol = TOL, sort_diagonal = false, lift_degeneracies = true)
+        @test Z.values ≈ eig.values[1:nev]
         @test Array(A * Z.vectors) ≈ Array(Z.vectors * Diagonal(Z.values))
     end
 end
