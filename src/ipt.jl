@@ -1,6 +1,6 @@
 using NLsolve: fixedpoint
 using LinearAlgebra
-
+using FixedPointAcceleration
 
 """
     ipt(M, k, X₀; kwargs...) -> (vectors, values, trace, iteration, matvec)
@@ -68,6 +68,28 @@ function ipt!(
                 trace=sol.trace,
                 iterations=sol.f_calls,
                 matvecs=sol.matvecs
+            )
+
+    elseif acceleration == :mpe
+
+        function F(X)
+            X = reshape(X, size(X₀)...)
+            Y = similar(X)
+            F!(Y, X)
+            return reshape(Y, size(X₀, 1) * size(X₀, 2))
+        end
+
+        @timeit_debug "iteration" sol = fixed_point(F, vec(X₀); Algorithm = :MPE).FixedPoint_
+
+        sol = reshape(sol, size(X₀)...)
+
+        @timeit_debug "rotate back" X = Q * sol
+
+        timed && print_timer()
+
+        return (
+                vectors= X,
+                values=diag(M * sol)
             )
 
     elseif acceleration == :anderson
