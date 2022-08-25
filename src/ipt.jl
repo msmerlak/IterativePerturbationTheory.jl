@@ -41,7 +41,8 @@ function ipt!(
     sort_diagonal::Bool = true,
     lift_degeneracies::Bool = true,
     degeneracy_threshold::Float64 = 1e-1,
-    diagonal::AbstractVector=diag(M)
+    diagonal::AbstractVector=diag(M),
+    α::Float64=1.
 )
 
     if M isa LinearMap M = LinearMapAA(M) end
@@ -101,6 +102,49 @@ function ipt!(
 
             @timeit_debug "apply F" R = F!(Y, X)
             @timeit_debug "update current vector" X .= Y
+            matvecs[i] = i == 1 ? k : matvecs[i - 1] + k 
+
+
+            if trace
+                residual_history[i] = R
+            end
+
+
+            maximum(R) < tol && break
+        end
+
+
+        
+        timed && print_timer()
+
+        i == maxiter && println("Didn't converge in $maxiter iterations.")
+
+        return (
+            vectors=  Q* X,
+            values=diag(M * X),
+            matvecs=trace ? matvecs[1:i] : nothing,
+            trace=trace ? reduce(hcat, residual_history[1:i])' : nothing
+        )
+
+    end
+
+    elseif acceleration == :relaxation
+
+        X = X₀
+        Y = similar(X)
+        i = 0
+
+        matvecs = Vector{Int}(undef, maxiter)
+        if trace
+            residual_history = Vector{Vector{T}}(undef, maxiter)
+        end
+
+        @timeit_debug "iteration" while i < maxiter
+
+            i += 1
+
+            @timeit_debug "apply F" R = F!(Y, X)
+            @timeit_debug "update current vector" X .= α*Y + (1-α)*X
             matvecs[i] = i == 1 ? k : matvecs[i - 1] + k 
 
 
