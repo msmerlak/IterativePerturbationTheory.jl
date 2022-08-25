@@ -126,8 +126,6 @@ function ipt!(
             trace=trace ? reduce(hcat, residual_history[1:i])' : nothing
         )
 
-    end
-
     elseif acceleration == :relaxation
 
         X = X₀
