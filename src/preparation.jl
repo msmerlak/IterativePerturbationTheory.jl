@@ -14,7 +14,7 @@ function prepare(M::Union{AbstractMatrix, LinearMapAX}, diagonal, k, sort_diagon
     else
         Q = I
     end
-    d = view(M, diagind(M))
+    d = diagonal
     @timeit_debug "build G" G = one(T) ./ (transpose(d[1:k]) .- d)
     return M, spdiagm(d), G, T, Q
 end
