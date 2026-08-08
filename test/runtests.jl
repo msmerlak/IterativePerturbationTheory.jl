@@ -2,6 +2,7 @@ using Test
 using LinearAlgebra, LinearMaps
 using IterativePerturbationTheory
 using SparseArrays
+using Random
 
 N = 1000
 M = diagm(1:N) + 1e-2rand(N, N)
@@ -34,4 +35,33 @@ end
         @test Z.values ≈ eig.values[1:nev]
         @test Array(A * Z.vectors) ≈ Array(Z.vectors * Diagonal(Z.values))
     end
+end
+
+### The cases above all have an already-sorted diagonal (M, S) or opt out of sorting
+### (W), so they never exercise the sort_diagonal path on a matrix that actually needs
+### permuting. Shuffle W to cover it: same spectrum, diagonal out of order, degeneracies
+### still present.
+@testset "Unsorted diagonal (permuted H20)" begin
+    nev = 10
+    eig = eigen(W)
+    p = randperm(MersenneTwister(7), size(W, 1))
+    Wp = W[p, p]
+    @test !issorted(diag(Wp))
+
+    for A in (Wp, sparse(Wp))
+        Z = ipt(A, nev; tol = TOL)   # defaults: sort_diagonal = lift_degeneracies = true
+        @test Z.values ≈ eig.values[1:nev]
+        # eigenvectors must come back in the caller's basis, not the sorted one
+        @test Array(A * Z.vectors) ≈ Array(Z.vectors * Diagonal(Z.values))
+    end
+end
+
+### A caller-supplied `diagonal` is an input, not scratch space.
+@testset "Caller-supplied diagonal is not mutated" begin
+    q = randperm(MersenneTwister(3), size(W, 1))
+    A = W[q, q]
+    d = diag(A)
+    before = copy(d)
+    ipt(A, 10; tol = TOL, diagonal = d)
+    @test d == before
 end

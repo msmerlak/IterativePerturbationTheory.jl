@@ -5,7 +5,18 @@ function prepare(M::Union{AbstractMatrix, LinearMapAX}, diagonal, k, sort_diagon
     N = size(M, 1)
     T = eltype(M)
 
-    @timeit_debug "sort diagonal" if sort_diagonal sort_diag!(M, diagonal) end
+    P = I
+    if sort_diagonal && !issorted(diagonal)
+        # sort_diag! permutes M into the sorted basis but leaves `diagonal` alone, so
+        # reorder our copy to match: everything below indexes into the sorted basis.
+        # Rebinding rather than permuting in place keeps a caller-supplied
+        # `diagonal` untouched.
+        s = @timeit_debug "sort diagonal" sort_diag!(M, diagonal)
+        diagonal = diagonal[s]
+        # P undoes that permutation on the eigenvectors, which are otherwise returned
+        # in the sorted basis. P[s[i], i] = 1, so (P * y)[s[i]] == y[i].
+        P = sparse(s, 1:N, ones(T, N), N, N)
+    end
     if lift_degeneracies
         @timeit_debug "lift degeneracies" begin
             subspaces = degenerate_subspaces(diagonal, k, degeneracy_threshold)
@@ -23,7 +34,7 @@ function prepare(M::Union{AbstractMatrix, LinearMapAX}, diagonal, k, sort_diagon
     end
     d = view(M, diagind(M))
     @timeit_debug "build G" G = one(T) ./ (transpose(d[1:k]) .- d)
-    return M, spdiagm(d), G, T, Q
+    return M, spdiagm(d), G, T, P * Q
 end
 
 
