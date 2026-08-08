@@ -56,6 +56,62 @@ function solve_rs(A, k = size(A, 1); orders = [3, 2], tol = 1e-12, maxiter = 400
     end
 end
 
+# ------------------------------------------------- the RS map, exposed directly
+# Identical to `quadratic!`. Exposed so that ACX and Anderson can be compared on
+# the same dynamics rather than through two different drivers.
+function rs_map(A, k = size(A, 1))
+    d = diag(A); T = eltype(A); Dg = Diagonal(d)
+    G = one(T) ./ (transpose(d[1:k]) .- d)
+    (Y, X) -> begin
+        mul!(Y, A, X)
+        R = vec(mapslices(norm, Y .- X * Diagonal(Y); dims = 1))
+        mul!(Y, Dg, X, -one(T), one(T))
+        mul!(Y, X, Diagonal(Y), -one(T), one(T))
+        Y .*= G
+        Y[diagind(Y)] .= one(T)
+        R
+    end
+end
+
+# ---------------------------------------------------- Anderson acceleration
+# Walker & Ni type-II with windowed memory m. Unlike ACX, which applies a
+# fixed-shape polynomial (I + sigma(J - I))^p driven by one scalar per column,
+# Anderson builds an optimal degree-m polynomial from the residual history. It is
+# therefore not confined to the region Re(mu) < 1 -- see README.
+function anderson(F!, X0; m = 50, beta = 1.0, tol = 1e-12, maxiter = 6000)
+    X = copy(X0); Y = similar(X)
+    dX = Vector{Vector{eltype(X0)}}(); dF = Vector{Vector{eltype(X0)}}()
+    xprev = nothing; fprev = nothing
+    for k in 1:maxiter
+        R = F!(Y, X)
+        all(isfinite, Y) || return (solution = Y, iters = k, ok = false)
+        maximum(R) < tol && return (solution = copy(Y), iters = k, ok = true)
+        x = vec(copy(X)); f = vec(Y) .- x
+        if xprev !== nothing
+            push!(dX, x .- xprev); push!(dF, f .- fprev)
+            length(dX) > m && (popfirst!(dX); popfirst!(dF))
+        end
+        xprev = x; fprev = f
+        xnew = if isempty(dF)
+            x .+ beta .* f
+        else
+            Fm = reduce(hcat, dF); Xm = reduce(hcat, dX)
+            g = try Fm \ f catch; zeros(eltype(x), size(Fm, 2)) end
+            all(isfinite, g) || (g = zeros(eltype(x), size(Fm, 2)))
+            x .+ beta .* f .- (Xm .+ beta .* Fm) * g
+        end
+        X = reshape(xnew, size(X)); X[diagind(X)] .= one(eltype(X))
+    end
+    (solution = X, iters = maxiter, ok = false)
+end
+
+function solve_aa(A, k = size(A, 1); m = 50, beta = 1.0, tol = 1e-12, maxiter = 6000)
+    r = anderson(rs_map(A, k), Matrix{eltype(A)}(I, size(A, 1), k);
+                 m = m, beta = beta, tol = tol, maxiter = maxiter)
+    r.ok || return nothing
+    (vectors = r.solution, values = diag(A * r.solution), iters = r.iters)
+end
+
 # ------------------------------------------------------- Brillouin-Wigner map
 # Same fixed points as the RS map above, but with self-consistent denominators
 # lambda_j - d_i recomputed every step. Substituting lambda_j = d_j + (VX)_jj
@@ -227,6 +283,29 @@ function experiment_enlargement(; N = 60, tmax = 1.6, dt = 0.05)
                             Z !== nothing && solved(A, Z.vectors, Z.values))))
     end
     @printf("  %-34s %.2f\n", "Brillouin-Wigner denominators", reach(bw))
+    for m in (2, 5, 10, 20, 50)
+        @printf("  %-34s %.2f\n", "Anderson memory m=$m",
+                reach(t -> (A = mk(t); Z = solve_aa(A; m = m);
+                            Z !== nothing && solved(A, Z.vectors, Z.values))))
+    end
+    @printf("  %-34s %.2f\n", "Anderson m=20, beta=0.2",
+            reach(t -> (A = mk(t); Z = solve_aa(A; m = 20, beta = 0.2);
+                        Z !== nothing && solved(A, Z.vectors, Z.values))))
+end
+
+"""Anderson breaks the Re(mu) < 1 barrier that bounds ACX. The key comparison."""
+function experiment_anderson(; N = 30, ts = (0.7, 0.9, 1.0, 1.1, 1.3, 1.5))
+    mk, W = testfamily(N)
+    println("\n== ACX vs Anderson against the Re(mu) < 1 criterion ==")
+    @printf("%-6s %10s %7s | %-6s %-10s %s\n", "t", "maxRe(mu)", "Re<1?", "ACX", "AA m=50", "AA m=50 beta=0.2")
+    for t in ts
+        A = mk(t); d = diag(A)
+        mr = maximum(real, jacobian_spectrum(:rs, t * W, unit_gauge(A), d))
+        Zc = solve_rs(A)
+        r(Z) = (Z !== nothing && solved(A, Z.vectors, Z.values)) ? "yes" : "NO"
+        @printf("%-6.2f %10.3f %7s | %-6s %-10s %s\n", t, mr, mr < 1 ? "yes" : "NO",
+                r(Zc), r(solve_aa(A; m = 50)), r(solve_aa(A; m = 50, beta = 0.2)))
+    end
 end
 
 """Why block-Jacobi backfires, and how much headroom the gauge appears to offer."""
@@ -250,6 +329,7 @@ end
 
 function run_all()
     experiment_criterion()
+    experiment_anderson()
     experiment_diagnostics()
     experiment_basin()
     experiment_enlargement()

@@ -29,6 +29,8 @@ predicts the Picard barrier to within one grid step.
 
 ## Main result: the operative criterion is max Re(mu) < 1, not rho < 1
 
+(This bounds ACX specifically. Anderson is not subject to it -- see below.)
+
 ACX converges far past rho = 1 -- it is not accelerating a contraction, it is
 *stabilising an unstable fixed point*. Its sigma-extrapolation of order p applies
 
@@ -59,6 +61,43 @@ still fails. Two reasons: ACX picks sigma adaptively from difference ratios rath
 optimally, and the admissible window is narrow when max Re(mu) is just under 1; and the
 criterion is local, whereas a cold start from X0 = I is a global basin question.
 
+## What does help: Anderson with large memory
+
+ACX applies a *fixed-shape* polynomial driven by one scalar per column, so it is
+confined to the region above. Anderson acceleration instead builds an optimal
+degree-m polynomial from the residual history -- GMRES-like on (I - J) -- and is
+therefore not confined to Re(mu) < 1. It isn't:
+
+| t | max Re(mu) | Re < 1 | ACX | AA m=50 | AA m=50 beta=0.2 |
+|---|---|---|---|---|---|
+| 0.70 | 0.727 | yes | yes | yes | yes |
+| 0.90 | 0.885 | yes | **no** | yes | yes |
+| 1.00 | 0.983 | yes | **no** | yes | yes |
+| 1.10 | 9.181 | **no** | no | **yes** | **yes** |
+| 1.30 | 24.898 | no | no | no | no |
+
+Anderson converges at t = 1.10 where max Re(mu) = 9.18, which no sigma stabilises at
+any order. It also clears t = 0.90 and 1.00, where max Re(mu) is just under 1 and ACX
+fails because its adaptively chosen sigma does not land in the narrow admissible
+window. Anderson is bounded too, somewhere between max Re(mu) = 9 and 25.
+
+**Memory matters, and the package default is too small.** Reach at N = 60:
+
+| accelerator | t_max |
+|---|---|
+| ACX [3,2] (default) | 0.85 |
+| Anderson m=2 | 0.70 |
+| Anderson m=5 (`anderson_memory` default) | 0.80 |
+| Anderson m=10 / m=20 | 0.85 |
+| Anderson m=50 | 0.90 |
+| Anderson m=20, beta=0.2 | 0.90 |
+
+At the default `anderson_memory = 5`, Anderson is *worse* than ACX and there is no
+reason to switch. The gain only appears at m >~ 20-50. So for strongly coupled
+problems the recommendation is `acceleration = :anderson` **with the memory raised**,
+not simply switching accelerator. Damping (beta < 1) buys about as much as raising m
+and is cheaper.
+
 ## Things that do not enlarge the basin
 
 Baseline cold ACX at N = 60 reaches t = 0.85. Five approaches, all falsified:
@@ -69,7 +108,7 @@ Baseline cold ACX at N = 60 reaches t = 0.85. Five approaches, all falsified:
 | continuation in t | 0.85 | enforces the adiabatic assignment, which is the thing going singular |
 | block-Jacobi b = 2 / 4 / 8 | 0.60 / 0.50 / 0.65 | block rotation collapses inter-block gaps |
 | higher `acx_orders` | 0.85 | stability region shape is p-independent |
-| gauge re-anchoring | < 0.80 | target fixed point has Re(mu) > 1, unstabilisable |
+| gauge re-anchoring | < 0.80 | target fixed point has Re(mu) > 1, unstabilisable by ACX |
 | Brillouin-Wigner denominators | 0.55 | intruder states: lambda_j - d_i passes through zero |
 
 Detail on the two least obvious:
@@ -105,18 +144,24 @@ drifts towards a neighbouring d_i and the denominator passes through zero.
 
 ## Where this points
 
-The accelerator, the gauge, and the starting point are all *not* the binding constraint.
-What matters is where the spectrum of J sits relative to the line Re(mu) = 1, and none of
-the five moves it left. Any real enlargement has to change the map so that spectrum shifts
--- BW was the obvious candidate and it moves the wrong way because of intruder states, so
-a denominator regularisation that keeps the self-consistency while bounding
-|lambda_j - d_i| away from zero is the natural next thing to try.
+For the *gauge* and the *starting point*, the conclusion is negative and fairly firm:
+neither is the binding constraint, and re-anchoring in particular chases a fixed point
+that is unreachable in principle. For the *map*, BW moves the spectrum the wrong way
+because of intruder states, so a denominator regularisation that keeps the
+self-consistency while bounding |lambda_j - d_i| away from zero is the natural next
+thing to try.
 
-Two untested gaps worth flagging:
+The *accelerator*, by contrast, turned out to be the one lever that works. Anderson
+with large memory is the only thing measured here that reliably beats the baseline, and
+it does so by escaping the Re(mu) < 1 region rather than by moving the spectrum. Worth
+pursuing further: Anderson is bounded too (it fails by max Re(mu) ~ 25), and where that
+bound comes from is not characterised here. A per-column Anderson -- matching how ACX
+already treats the columns independently, which the map permits since F is
+column-decoupled -- was not tried and is the obvious next experiment.
 
-- `acceleration = :anderson` was not measured. It is the one accelerator whose stability
-  region is *not* of the form |1 + sigma(mu - 1)| < 1 -- it builds its step from a
-  subspace rather than one scalar per column, so it could in principle stabilise
-  Re(mu) > 1. If so, the analysis above bounds ACX specifically, not the method.
-- Everything here is a single realisation of one coupling family at N in {30, 60}. The
-  *form* of the criterion should be generic; the thresholds certainly are not.
+Remaining caveat: everything here is a single realisation of one coupling family at
+N in {30, 60}. The *form* of the criteria should be generic; the thresholds certainly
+are not. The Anderson implementation used is a standalone Walker & Ni type-II in
+`basin_theory.jl`, not the `NLsolve` path that `acceleration = :anderson` actually
+calls, so the reach numbers should be re-checked against the package's own
+implementation before being relied on.
