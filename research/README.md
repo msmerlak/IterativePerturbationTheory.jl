@@ -98,6 +98,41 @@ problems the recommendation is `acceleration = :anderson` **with the memory rais
 not simply switching accelerator. Damping (beta < 1) buys about as much as raising m
 and is cheaper.
 
+### Per-column Anderson does not help, and fails in an instructive way
+
+The map is column-decoupled -- F(X)[:,j] depends only on X[:,j] -- and ACX already
+exploits this with a separate sigma per column. So per-column Anderson (its own
+history and least-squares per column, strictly more freedom at identical cost) looks
+like the obvious next step. It is worse: reach 0.80 at N = 60 against 0.90 for the
+shared-gamma version, and flat in m.
+
+The reason is not divergence. It *converges*, to machine precision, with every column
+a genuine eigenvector -- onto **duplicate** eigenvectors:
+
+| t | per-column resid | cond(X) | distinct eigenvalues | shipped ACX resid | ACX distinct |
+|---|---|---|---|---|---|
+| 0.80 | 7.4e-15 | 6.3e+00 | 60/60 | 4.6e-15 | 60/60 |
+| 0.85 | 3.2e-15 | **4.5e+14** | **57/60** | 1.9e-14 | 60/60 |
+| 0.90 | 3.6e-15 | 6.9e+13 | **59/60** | 6.1e+12 | 21/60 |
+| 1.00 | 6.4e-15 | 4.3e+14 | **57/60** | 1.2e+13 | 0/60 |
+
+This exposes a general property of the stopping test. `maximum(R) < tol` asks that each
+column is *an* eigenvector; it never asks that the columns are *distinct*. A solve can
+therefore report success while several columns have collapsed onto the same eigenvector,
+silently returning a rank-deficient basis with eigenvalues missing. Sharing one gamma
+across columns is what prevents this -- the columns are decoupled in the map, but
+coupling them in the accelerator keeps them from merging. That coupling is a feature,
+not a limitation to be optimised away.
+
+`cond(X)` is a reliable and cheap detector: 6.3 when healthy, 1e13-1e14 on collapse.
+
+Note this is a hazard of per-column Anderson, **not** a defect in the package. On this
+family the shipped ACX path never collapses silently -- when it fails it fails loudly,
+with residuals around 1e12-1e13 that any caller would notice (the ACX columns above are
+diverged, not collapsed). But nothing in the stopping test *guarantees* that, so a
+`cond(X)` or rank check would be cheap insurance for anyone pushing into strong coupling
+or swapping in a different accelerator.
+
 ## Things that do not enlarge the basin
 
 Baseline cold ACX at N = 60 reaches t = 0.85. Five approaches, all falsified:
@@ -155,9 +190,9 @@ The *accelerator*, by contrast, turned out to be the one lever that works. Ander
 with large memory is the only thing measured here that reliably beats the baseline, and
 it does so by escaping the Re(mu) < 1 region rather than by moving the spectrum. Worth
 pursuing further: Anderson is bounded too (it fails by max Re(mu) ~ 25), and where that
-bound comes from is not characterised here. A per-column Anderson -- matching how ACX
-already treats the columns independently, which the map permits since F is
-column-decoupled -- was not tried and is the obvious next experiment.
+bound comes from is not characterised here. Per-column Anderson, the obvious next thing
+to try, was tried and is a dead end -- see above; the interesting part is *why*, and the
+column-collapse hazard it exposes in the stopping test.
 
 Remaining caveat: everything here is a single realisation of one coupling family at
 N in {30, 60}. The *form* of the criteria should be generic; the thresholds certainly

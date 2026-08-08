@@ -105,6 +105,55 @@ function anderson(F!, X0; m = 50, beta = 1.0, tol = 1e-12, maxiter = 6000)
     (solution = X, iters = maxiter, ok = false)
 end
 
+# Per-column Anderson. F is column-decoupled, so each column can carry its own
+# history and least-squares solve -- strictly more freedom than the shared-gamma
+# version above, at the same cost. It is *worse*, and for a subtle reason: see
+# experiment_column_collapse and the README. Kept here as a documented dead end.
+function anderson_percolumn(F!, X0; m = 20, beta = 1.0, tol = 1e-12, maxiter = 6000)
+    T = eltype(X0); X = copy(X0); Y = similar(X); N, k = size(X)
+    dX = [Vector{Vector{T}}() for _ in 1:k]; dF = [Vector{Vector{T}}() for _ in 1:k]
+    Xp = similar(X); Fp = similar(X); have = false
+    for it in 1:maxiter
+        R = F!(Y, X)
+        all(isfinite, Y) || return (solution = Y, iters = it, ok = false)
+        maximum(R) < tol && return (solution = copy(Y), iters = it, ok = true)
+        Fc = Y .- X; Xn = similar(X)
+        for c in 1:k
+            x = @view(X[:, c]); f = @view(Fc[:, c])
+            if have
+                push!(dX[c], x .- @view(Xp[:, c])); push!(dF[c], f .- @view(Fp[:, c]))
+                length(dX[c]) > m && (popfirst!(dX[c]); popfirst!(dF[c]))
+            end
+            if isempty(dF[c])
+                Xn[:, c] = x .+ beta .* f
+            else
+                Fm = reduce(hcat, dF[c]); Xm = reduce(hcat, dX[c])
+                g = try Fm \ Vector(f) catch; zeros(T, size(Fm, 2)) end
+                all(isfinite, g) || (g = zeros(T, size(Fm, 2)))
+                Xn[:, c] = x .+ beta .* f .- (Xm .+ beta .* Fm) * g
+            end
+        end
+        Xp .= X; Fp .= Fc; have = true
+        X = Xn; X[diagind(X)] .= one(T)
+    end
+    (solution = X, iters = maxiter, ok = false)
+end
+
+"""How many *distinct* eigenvalues did the columns actually land on?
+
+The iteration's stopping test, maximum(R) < tol, only asks that each column is
+*an* eigenvector. It never asks that they are distinct, so a solve can report
+success while several columns sit on the same eigenvector.
+"""
+function distinct_eigenvalues(A, values; atol = 1e-6)
+    ref = eigen(Symmetric(A)).values; used = falses(length(ref)); n = 0
+    for v in values
+        j = argmin(abs.(ref .- v))
+        if abs(ref[j] - v) < atol && !used[j]; used[j] = true; n += 1; end
+    end
+    n
+end
+
 function solve_aa(A, k = size(A, 1); m = 50, beta = 1.0, tol = 1e-12, maxiter = 6000)
     r = anderson(rs_map(A, k), Matrix{eltype(A)}(I, size(A, 1), k);
                  m = m, beta = beta, tol = tol, maxiter = maxiter)
@@ -291,6 +340,12 @@ function experiment_enlargement(; N = 60, tmax = 1.6, dt = 0.05)
     @printf("  %-34s %.2f\n", "Anderson m=20, beta=0.2",
             reach(t -> (A = mk(t); Z = solve_aa(A; m = 20, beta = 0.2);
                         Z !== nothing && solved(A, Z.vectors, Z.values))))
+    for m in (10, 20, 50)
+        @printf("  %-34s %.2f\n", "Anderson PER-COLUMN m=$m",
+                reach(t -> (A = mk(t);
+                            r = anderson_percolumn(rs_map(A, N), Matrix{Float64}(I, N, N); m = m);
+                            r.ok && solved(A, r.solution, diag(A * r.solution)))))
+    end
 end
 
 """Anderson breaks the Re(mu) < 1 barrier that bounds ACX. The key comparison."""
@@ -305,6 +360,33 @@ function experiment_anderson(; N = 30, ts = (0.7, 0.9, 1.0, 1.1, 1.3, 1.5))
         r(Z) = (Z !== nothing && solved(A, Z.vectors, Z.values)) ? "yes" : "NO"
         @printf("%-6.2f %10.3f %7s | %-6s %-10s %s\n", t, mr, mr < 1 ? "yes" : "NO",
                 r(Zc), r(solve_aa(A; m = 50)), r(solve_aa(A; m = 50, beta = 0.2)))
+    end
+end
+
+"""Per-column Anderson converges to *duplicate* eigenvectors -- a silent failure.
+
+Contrasted against the shipped ACX path, which in this family fails loudly (huge
+residual) rather than silently, so this is a hazard of per-column Anderson and not
+a defect in the package.
+"""
+function experiment_column_collapse(; N = 60, ts = (0.80, 0.85, 0.90, 1.00))
+    mk, _ = testfamily(N)
+    println("\n== Column collapse: converged residual does not imply distinct eigenvectors ==")
+    @printf("%-6s | %-34s | %s\n", "t", "per-column Anderson m=20", "shipped ACX")
+    @printf("%-6s | %10s %10s %10s | %10s %10s\n", "", "resid", "cond(X)", "distinct", "resid", "distinct")
+    for t in ts
+        A = mk(t)
+        r = anderson_percolumn(rs_map(A, N), Matrix{Float64}(I, N, N); m = 20)
+        Zc = solve_rs(A)
+        function stats(vecs, vals)
+            (!all(isfinite, vals)) && return (Inf, 0)
+            (norm(A * vecs - vecs * Diagonal(vals)) / norm(A), distinct_eigenvalues(A, vals))
+        end
+        pr, pd = r.ok ? stats(r.solution, diag(A * r.solution)) : (Inf, 0)
+        cr, cd = Zc === nothing ? (Inf, 0) : stats(Zc.vectors, Zc.values)
+        pc = r.ok ? cond(r.solution) : Inf
+        @printf("%-6.2f | %10.2e %10.2e %7d/%-3d | %10.2e %7d/%d%s\n", t, pr, pc, pd, N, cr, cd, N,
+                (pr < 1e-10 && pd < N) ? "   <- silent collapse" : "")
     end
 end
 
@@ -330,6 +412,7 @@ end
 function run_all()
     experiment_criterion()
     experiment_anderson()
+    experiment_column_collapse()
     experiment_diagnostics()
     experiment_basin()
     experiment_enlargement()
