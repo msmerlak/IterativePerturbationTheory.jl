@@ -415,9 +415,98 @@ function run_all()
     experiment_column_collapse()
     experiment_diagnostics()
     experiment_basin()
+    experiment_necessary_sufficient()
+    experiment_pole()
     experiment_enlargement()
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
     run_all()
+end
+
+# ==================================================== necessary & sufficient
+
+# Pencil reduction of the per-column Jacobian. The map is column-decoupled, so
+# J = ⊕_j J_j. With C_j = A - λ_j I - x_j w_j' (w_j = row j of V) and
+# B_j = diag(d_j - d_i), the j-th row of C_j e vanishes identically on {e_j = 0},
+# and spec(J_j) = 1 + eigvals(B̂_j^{-1} Ĉ_j) with row/column j deleted.
+# Verified against finite differences of the shipped map to 1e-8.
+function pencil_spectrum(A, X, lam, j)
+    N = size(A, 1); d = diag(A); V = A - Diagonal(d); idx = setdiff(1:N, j)
+    C = A - lam[j] * I - X[:, j] * transpose(V[j, :])
+    1 .+ eigvals(Diagonal(1 ./ (d[j] .- d[idx])) * C[idx, idx])
+end
+
+function identity_fixed_point(A)
+    F = eigen(Symmetric(A))
+    F.vectors * Diagonal(1 ./ diag(F.vectors)), F.values
+end
+
+"""All Jacobian eigenvalues, shifted: ν = μ - 1, collected over columns."""
+function all_nu(A)
+    X, lam = identity_fixed_point(A)
+    reduce(vcat, [pencil_spectrum(A, X, lam, j) .- 1 for j in 1:size(A, 1)])
+end
+
+"""Optimal common damping: argmin_σ max_ν |1 + σν|, from the spectrum."""
+function sigma_star(nus; grid = exp10.(range(-3, 0.5, length = 200)))
+    best = (Inf, NaN)
+    for s in grid
+        r = maximum(abs, 1 .+ s .* nus)
+        r < best[1] && (best = (r, s))
+    end
+    best   # (predicted contraction factor rho*, sigma*)
+end
+
+"""Damped Picard: X ← X + σ(F(X) - X). The constructive side of the theorem."""
+function damped_solve(A, k = size(A, 1); sigma, tol = 1e-10, maxiter = 200_000)
+    Fmap = rs_map(A, k); X = Matrix{eltype(A)}(I, size(A, 1), k); Y = similar(X)
+    for it in 1:maxiter
+        R = Fmap(Y, X)
+        all(isfinite, Y) || return (X, it, false)
+        maximum(R) < tol && return (X, it, true)
+        @. X += sigma * (Y - X)
+    end
+    (X, maxiter, false)
+end
+
+"""Sharpness of max Re(mu) < 1 for the damped class: rates, reach, necessity."""
+function experiment_necessary_sufficient(; N = 30, ts = (0.85, 0.90, 0.95, 1.00, 1.01, 1.02, 1.05))
+    mk, _ = testfamily(N)
+    println("\n== N&S for the damped class: predicted vs measured, reach, necessity ==")
+    @printf("%-6s %9s | %9s %9s | %s\n", "t", "maxRe", "rho*pred", "rho*meas", "cold damped X0=I")
+    for t in ts
+        A = mk(t); nus = all_nu(A); mre = 1 + maximum(real, nus)
+        rho, sig = sigma_star(nus)
+        Xs, _ = identity_fixed_point(A)
+        # measured linear rate from a small perturbation of the fixed point
+        Random.seed!(7); E = randn(N, N); E[diagind(E)] .= 0
+        X = Xs .+ 1e-6 .* E ./ norm(E); Y = similar(X); Fmap = rs_map(A, N)
+        e0 = norm(X .- Xs); rmeas = Inf
+        for it in 1:400
+            Fmap(Y, X); all(isfinite, Y) || break
+            @. X += sig * (Y - X)
+            norm(X .- Xs) > 1e6 && break
+            it == 400 && (rmeas = (norm(X .- Xs) / e0)^(1 / 400))
+        end
+        cold = "-"
+        if rho < 1
+            Xc, it, ok = damped_solve(A; sigma = sig)
+            cold = ok && solved(A, Xc, diag(A * Xc)) ? "yes ($it)" : "NO"
+        end
+        @printf("%-6.2f %9.3f | %9.5f %9.5f | %s\n", t, mre, rho, rmeas, cold)
+    end
+end
+
+"""The Re = 1 crossing is a gauge pole: t* coincides with min_j |v_jj| -> 0."""
+function experiment_pole(; N = 30, ts = (0.99, 1.00, 1.01, 1.015, 1.02, 1.03, 1.05))
+    mk, _ = testfamily(N)
+    println("\n== The wall at t* is the gauge pole ==")
+    @printf("%-7s %10s %8s %12s %8s\n", "t", "maxRe", "argcol", "min|v_jj|", "argmin")
+    for t in ts
+        A = mk(t); X, lam = identity_fixed_point(A); Vec = eigen(Symmetric(A)).vectors
+        mres = [maximum(real, pencil_spectrum(A, X, lam, j)) for j in 1:N]
+        @printf("%-7.3f %10.3f %8d %12.5f %8d\n", t, maximum(mres), argmax(mres),
+                minimum(abs, diag(Vec)), argmin(abs.(diag(Vec))))
+    end
 end
