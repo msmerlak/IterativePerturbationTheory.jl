@@ -25,7 +25,19 @@ Keyword arguments:
 * timed: whether to time each step using TimerOutputs
 """
 
-ipt(M, k=size(M, 1), X₀=Matrix{eltype(M)}(I, size(M, 1), k); kwargs...) = ipt!(workcopy(M), k, X₀; kwargs...)
+function ipt(M, k=size(M, 1), X₀=Matrix{eltype(M)}(I, size(M, 1), k);
+             diagonal::AbstractVector=diag(M), kwargs...)
+    # ipt! mutates M only to sort its diagonal or to rotate degenerate subspaces.
+    # Both are decidable from the diagonal alone, so skip the defensive full-matrix
+    # copy -- an O(N²) memory pass that dominates small-k solves -- when neither
+    # will happen.
+    sort_diagonal = get(kwargs, :sort_diagonal, true)
+    lift_degeneracies = get(kwargs, :lift_degeneracies, true)
+    threshold = get(kwargs, :degeneracy_threshold, 1e-1)
+    mutates = (sort_diagonal && !issorted(diagonal)) ||
+              (lift_degeneracies && !isempty(degenerate_subspaces(diagonal, k, threshold)))
+    return ipt!(mutates ? workcopy(M) : M, k, X₀; diagonal=diagonal, kwargs...)
+end
 
 # plain buffer copy suffices for array types; deepcopy only for wrapped operators
 workcopy(M::Union{Matrix, SparseMatrixCSC}) = copy(M)
@@ -53,10 +65,10 @@ function ipt!(
     timed && reset_timer!()
 
     @timeit_debug "preparation" begin
-        M, D, G, T, Q = prepare(M, diagonal, k, sort_diagonal, lift_degeneracies, degeneracy_threshold)
+        M, D, T, Q = prepare(M, diagonal, k, sort_diagonal, lift_degeneracies, degeneracy_threshold)
     end
 
-    F!(Y, X) = quadratic!(Y, X, M, D, G, T)
+    F!(Y, X) = quadratic!(Y, X, M, D, T)
 
     if acceleration == :acx
 
@@ -133,46 +145,62 @@ function ipt!(
 end
 
 
-function quadratic!(Y, X, M::Union{Matrix, SparseMatrixCSC}, d::AbstractVector, G, T)
+function quadratic!(Y, X, M::Union{Matrix, SparseMatrixCSC}, d::AbstractVector, T)
 
     @timeit_debug "matrix product" mul!(Y, M, X)
-    @timeit_debug "fused update" R = fused_update!(Y, X, d, G)
+    @timeit_debug "fused update" R = fused_update!(Y, X, d)
 
     return R
 end
 
-function quadratic!(Y, X, M::LinearMapAX, d::AbstractVector, G, T)
+function quadratic!(Y, X, M::LinearMapAX, d::AbstractVector, T)
 
     @timeit_debug "matrix product" Y .= Matrix(M * X)
-    @timeit_debug "fused update" R = fused_update!(Y, X, d, G)
+    @timeit_debug "fused update" R = fused_update!(Y, X, d)
 
     return R
 end
 
 """
 Single fused pass over Y = M X implementing everything after the matrix product:
-the residual norms of the current iterate, the two diagonal products, the Hadamard
-product with G, and the diagonal reset. Column j reads Y[i,j], X[i,j] once each and
-writes Y[i,j] once, with no temporaries -- replacing five array passes and two
-full-size allocations (the mapslices residual and X * Diagonal(Y)).
+the residual norms of the current iterate, the two diagonal products, the division
+by the gap (the former Hadamard product with G, now an on-the-fly division -- it
+benchmarks faster than streaming a precomputed N x k reciprocal table, and removes
+that table's allocation and construction from prepare entirely), and the diagonal
+reset. Column j reads Y[i,j], X[i,j] once each and writes Y[i,j] once, with no
+temporaries. Columns are independent, so the pass threads when Julia has threads
+and the block is large enough to amortize the fork.
 """
-function fused_update!(Y::AbstractMatrix{T}, X, d, G) where T
+function fused_update!(Y::AbstractMatrix{T}, X, d) where T
     N, k = size(Y)
     R = Vector{real(T)}(undef, k)
-    @inbounds for j in 1:k
+    if Threads.nthreads() > 1 && k >= 64
+        Threads.@threads :static for j in 1:k
+            R[j] = fused_column!(Y, X, d, j, N)
+        end
+    else
+        for j in 1:k
+            R[j] = fused_column!(Y, X, d, j, N)
+        end
+    end
+    return R
+end
+
+@inline function fused_column!(Y::AbstractMatrix{T}, X, d, j, N) where T
+    @inbounds begin
         λ = Y[j, j]                    # (MX)[j,j], the eigenvalue estimate
-        s = λ - d[j]
+        dj = d[j]
+        s = λ - dj
         r = zero(real(T))
         @simd for i in 1:N
             y = Y[i, j]
             x = X[i, j]
-            r += abs2(y - λ * x)                     # residual of the input iterate
-            Y[i, j] = (y - (d[i] + s) * x) * G[i, j] # next iterate
+            r += abs2(y - λ * x)                    # residual of the input iterate
+            Y[i, j] = (y - (d[i] + s) * x) / (dj - d[i])  # next iterate
         end
         Y[j, j] = one(T)
-        R[j] = sqrt(r)
+        return sqrt(r)
     end
-    return R
 end
 
 """
