@@ -22,6 +22,9 @@ Keyword arguments:
 * maxiter: maximal number of iterations
 * acx_orders: an internal parameter for Alternating Cyclic Acceleration, either [3, 2] or [3, 3, 2]
 * anderson_memory: an internal parameter for Anderson Acceleration
+* deflate: whether to freeze converged columns and shrink the iteration to the
+  still-active block (:acx only). Costs nothing when all columns converge together;
+  pays whenever convergence is staggered across the spectrum.
 * timed: whether to time each step using TimerOutputs
 """
 
@@ -57,6 +60,7 @@ function ipt!(
     sort_diagonal::Bool = true,
     lift_degeneracies::Bool = true,
     degeneracy_threshold::Float64 = 1e-1,
+    deflate::Bool = true,
     diagonal::AbstractVector=diag(M)
 )
 
@@ -68,11 +72,11 @@ function ipt!(
         M, D, T, Q = prepare(M, diagonal, k, sort_diagonal, lift_degeneracies, degeneracy_threshold)
     end
 
-    F!(Y, X) = quadratic!(Y, X, M, D, T)
+    F!(Y, X, anchors=Base.OneTo(size(X, 2))) = quadratic!(Y, X, M, D, T, anchors)
 
     if acceleration == :acx
 
-        @timeit_debug "iteration" sol = acx(F!, X₀; tol=tol, orders=acx_orders, trace=trace, maxiter=maxiter, matrix=M)
+        @timeit_debug "iteration" sol = acx(F!, X₀; tol=tol, orders=acx_orders, trace=trace, maxiter=maxiter, matrix=M, deflate=deflate)
 
         @timeit_debug "rotate back" X = rotate_back(Q, sol.solution)
 
@@ -145,18 +149,20 @@ function ipt!(
 end
 
 
-function quadratic!(Y, X, M::Union{Matrix, SparseMatrixCSC}, d::AbstractVector, T)
+function quadratic!(Y, X, M::Union{Matrix, SparseMatrixCSC}, d::AbstractVector, T,
+                    anchors::AbstractVector{<:Integer}=Base.OneTo(size(X, 2)))
 
     @timeit_debug "matrix product" mul!(Y, M, X)
-    @timeit_debug "fused update" R = fused_update!(Y, X, d)
+    @timeit_debug "fused update" R = fused_update!(Y, X, d, anchors)
 
     return R
 end
 
-function quadratic!(Y, X, M::LinearMapAX, d::AbstractVector, T)
+function quadratic!(Y, X, M::LinearMapAX, d::AbstractVector, T,
+                    anchors::AbstractVector{<:Integer}=Base.OneTo(size(X, 2)))
 
     @timeit_debug "matrix product" Y .= Matrix(M * X)
-    @timeit_debug "fused update" R = fused_update!(Y, X, d)
+    @timeit_debug "fused update" R = fused_update!(Y, X, d, anchors)
 
     return R
 end
@@ -171,34 +177,34 @@ reset. Column j reads Y[i,j], X[i,j] once each and writes Y[i,j] once, with no
 temporaries. Columns are independent, so the pass threads when Julia has threads
 and the block is large enough to amortize the fork.
 """
-function fused_update!(Y::AbstractMatrix{T}, X, d) where T
+function fused_update!(Y::AbstractMatrix{T}, X, d, anchors) where T
     N, k = size(Y)
     R = Vector{real(T)}(undef, k)
     if Threads.nthreads() > 1 && k >= 64
         Threads.@threads :static for j in 1:k
-            R[j] = fused_column!(Y, X, d, j, N)
+            R[j] = fused_column!(Y, X, d, j, anchors[j], N)
         end
     else
         for j in 1:k
-            R[j] = fused_column!(Y, X, d, j, N)
+            R[j] = fused_column!(Y, X, d, j, anchors[j], N)
         end
     end
     return R
 end
 
-@inline function fused_column!(Y::AbstractMatrix{T}, X, d, j, N) where T
+@inline function fused_column!(Y::AbstractMatrix{T}, X, d, j, a, N) where T
     @inbounds begin
-        λ = Y[j, j]                    # (MX)[j,j], the eigenvalue estimate
-        dj = d[j]
-        s = λ - dj
+        λ = Y[a, j]                    # (MX)[a,j], the eigenvalue estimate
+        da = d[a]
+        s = λ - da
         r = zero(real(T))
         @simd for i in 1:N
             y = Y[i, j]
             x = X[i, j]
             r += abs2(y - λ * x)                    # residual of the input iterate
-            Y[i, j] = (y - (d[i] + s) * x) / (dj - d[i])  # next iterate
+            Y[i, j] = (y - (d[i] + s) * x) / (da - d[i])  # next iterate
         end
-        Y[j, j] = one(T)
+        Y[a, j] = one(T)
         return sqrt(r)
     end
 end
