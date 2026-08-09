@@ -5,9 +5,26 @@ https://arxiv.org/pdf/2104.04974.pdf
 See https://github.com/NicolasL-S/SpeedMapping.jl for the author's version, currently restricted to real functions (with no GPU support).
 """
 
-import LinearAlgebra: dot
-
-dot(X::AbstractMatrix, Y::AbstractMatrix) = dot.(eachcol(X), eachcol(Y))'
+# σ = |⟨A, B⟩_F / ⟨A, A⟩_F|: ONE extrapolation parameter for the whole block,
+# fused into a single pass. This is what the previous code actually computed:
+# it declared a per-column override of LinearAlgebra.dot for matrix pairs, but
+# for BLAS element types LinearAlgebra's dense-array dot is more specific, so
+# the override was dead code and dot(A, B) returned the scalar Frobenius inner
+# product. The override was also type piracy (it silently changed dot's meaning
+# for matrix pairs in ALL loaded code), and its per-column branch -- reachable
+# only for non-BLAS eltypes -- divides 0/0 = NaN on any column that starts
+# exactly converged. It is gone; the scalar semantics are now explicit, with
+# the 0/0 case (whole block converged) mapped to σ = 0 instead of NaN.
+function frobsigma(A, B)
+    num = zero(eltype(A))
+    den = zero(real(eltype(A)))
+    @inbounds @simd for i in eachindex(A, B)
+        a = A[i]
+        num += conj(a) * B[i]
+        den += abs2(a)
+    end
+    return den == 0 ? zero(real(eltype(A))) : abs(num / den)
+end
 
 function acx(
     F!::Function,
@@ -58,7 +75,7 @@ function acx(
 
         if p == 2
 
-            @timeit_debug "σ" σ = abs.(dot(Δ², Δ¹) ./ dot(Δ², Δ²))
+            @timeit_debug "σ" σ = frobsigma(Δ², Δ¹)
             @timeit_debug "X" @. X += 2σ * Δ¹ + σ^2 * Δ²
 
         elseif p == 3
@@ -68,7 +85,7 @@ function acx(
 
             @timeit_debug "Δ³" @. Δ³ = F³ - 3F² + 3F¹ - X
 
-            @timeit_debug "σ" σ = abs.(dot(Δ³, Δ²) ./ dot(Δ³, Δ³))
+            @timeit_debug "σ" σ = frobsigma(Δ³, Δ²)
             @timeit_debug "X" @. X += 3σ * Δ¹ + 3σ^2 * Δ² + σ^3 * Δ³
 
         end

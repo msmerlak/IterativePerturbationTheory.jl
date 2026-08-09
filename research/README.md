@@ -63,7 +63,7 @@ criterion is local, whereas a cold start from X0 = I is a global basin question.
 
 ## What does help: Anderson with large memory
 
-ACX applies a *fixed-shape* polynomial driven by one scalar per column, so it is
+ACX applies a *fixed-shape* polynomial driven by one scalar, so it is
 confined to the region above. Anderson acceleration instead builds an optimal
 degree-m polynomial from the residual history -- GMRES-like on (I - J) -- and is
 therefore not confined to Re(mu) < 1. It isn't:
@@ -100,10 +100,9 @@ and is cheaper.
 
 ### Per-column Anderson does not help, and fails in an instructive way
 
-The map is column-decoupled -- F(X)[:,j] depends only on X[:,j] -- and ACX already
-exploits this with a separate sigma per column. So per-column Anderson (its own
-history and least-squares per column, strictly more freedom at identical cost) looks
-like the obvious next step. It is worse: reach 0.80 at N = 60 against 0.90 for the
+The map is column-decoupled -- F(X)[:,j] depends only on X[:,j] -- so per-column
+Anderson (its own history and least-squares per column, strictly more freedom at
+identical cost) looks like the obvious next step. It is worse: reach 0.80 at N = 60 against 0.90 for the
 shared-gamma version, and flat in m.
 
 The reason is not divergence. It *converges*, to machine precision, with every column
@@ -176,6 +175,18 @@ different Jacobian, which drops the E_ij (VX)_jj term into the denominator. It i
 at very weak coupling (rho 1.08 vs 1.43 at t = 0.5) and much worse beyond: at t = 0.70,
 max Re(mu) = 28.4 against RS's 0.727. The classic intruder-state problem -- lambda_j
 drifts towards a neighbouring d_i and the denominator passes through zero.
+
+**Erratum (found while optimizing the package).** Earlier revisions of these notes
+described ACX as using "one sigma per column". The source reads that way -- acx.jl
+overrode LinearAlgebra.dot for matrix pairs to compute per-column dots -- but for BLAS
+element types LinearAlgebra's dense-array dot is more specific and wins dispatch, so
+the override was dead code and sigma was the scalar Frobenius ratio |<D2,D1>_F/<D2,D2>_F|:
+ONE extrapolation parameter shared by all columns. Nothing quantitative changes (every
+experiment here drove the real accelerator), and the theory below never assumed
+per-column sigma. It also sharpens the column-collapse story: a per-column sigma would
+hit 0/0 = NaN on any column that starts exactly converged, and sharing one parameter
+across columns is part of why ACX does not collapse them independently -- the same
+coupling-as-feature conclusion as for Anderson's shared gamma.
 
 ## Necessary and sufficient conditions
 
