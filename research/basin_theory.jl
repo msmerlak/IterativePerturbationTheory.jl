@@ -75,8 +75,9 @@ end
 
 # ---------------------------------------------------- Anderson acceleration
 # Walker & Ni type-II with windowed memory m. Unlike ACX, which applies a
-# fixed-shape polynomial (I + sigma(J - I))^p driven by one scalar per column,
-# Anderson builds an optimal degree-m polynomial from the residual history. It is
+# fixed-shape polynomial (I + sigma(J - I))^p driven by one scalar (the Frobenius
+# ratio -- see README erratum), Anderson builds an optimal degree-m polynomial
+# from the residual history. It is
 # therefore not confined to the region Re(mu) < 1 -- see README.
 function anderson(F!, X0; m = 50, beta = 1.0, tol = 1e-12, maxiter = 6000)
     X = copy(X0); Y = similar(X)

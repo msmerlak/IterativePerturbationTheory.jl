@@ -22,10 +22,29 @@ Keyword arguments:
 * maxiter: maximal number of iterations
 * acx_orders: an internal parameter for Alternating Cyclic Acceleration, either [3, 2] or [3, 3, 2]
 * anderson_memory: an internal parameter for Anderson Acceleration
+* deflate: whether to freeze converged columns and shrink the iteration to the
+  still-active block (:acx only). Costs nothing when all columns converge together;
+  pays whenever convergence is staggered across the spectrum.
 * timed: whether to time each step using TimerOutputs
 """
 
-ipt(M, k=size(M, 1), X₀=Matrix{eltype(M)}(I, size(M, 1), k); kwargs...) = ipt!(deepcopy(M), k, X₀; kwargs...)
+function ipt(M, k=size(M, 1), X₀=Matrix{eltype(M)}(I, size(M, 1), k);
+             diagonal::AbstractVector=diag(M), kwargs...)
+    # ipt! mutates M only to sort its diagonal or to rotate degenerate subspaces.
+    # Both are decidable from the diagonal alone, so skip the defensive full-matrix
+    # copy -- an O(N²) memory pass that dominates small-k solves -- when neither
+    # will happen.
+    sort_diagonal = get(kwargs, :sort_diagonal, true)
+    lift_degeneracies = get(kwargs, :lift_degeneracies, true)
+    threshold = get(kwargs, :degeneracy_threshold, 1e-1)
+    mutates = (sort_diagonal && !issorted(diagonal)) ||
+              (lift_degeneracies && !isempty(degenerate_subspaces(diagonal, k, threshold)))
+    return ipt!(mutates ? workcopy(M) : M, k, X₀; diagonal=diagonal, kwargs...)
+end
+
+# plain buffer copy suffices for array types; deepcopy only for wrapped operators
+workcopy(M::Union{Matrix, SparseMatrixCSC}) = copy(M)
+workcopy(M) = deepcopy(M)
 
 function ipt!(
     M::Union{AbstractMatrix, LinearMap},
@@ -41,6 +60,7 @@ function ipt!(
     sort_diagonal::Bool = true,
     lift_degeneracies::Bool = true,
     degeneracy_threshold::Float64 = 1e-1,
+    deflate::Bool = true,
     diagonal::AbstractVector=diag(M)
 )
 
@@ -49,22 +69,22 @@ function ipt!(
     timed && reset_timer!()
 
     @timeit_debug "preparation" begin
-        M, D, G, T, Q = prepare(M, diagonal, k, sort_diagonal, lift_degeneracies, degeneracy_threshold)
+        M, D, T, Q = prepare(M, diagonal, k, sort_diagonal, lift_degeneracies, degeneracy_threshold)
     end
 
-    F!(Y, X) = quadratic!(Y, X, M, D, G, T)
+    F!(Y, X, anchors=Base.OneTo(size(X, 2))) = quadratic!(Y, X, M, D, T, anchors)
 
     if acceleration == :acx
 
-        @timeit_debug "iteration" sol = acx(F!, X₀; tol=tol, orders=acx_orders, trace=trace, maxiter=maxiter, matrix=M)
+        @timeit_debug "iteration" sol = acx(F!, X₀; tol=tol, orders=acx_orders, trace=trace, maxiter=maxiter, matrix=M, deflate=deflate)
 
-        @timeit_debug "rotate back" X = Q * sol.solution
+        @timeit_debug "rotate back" X = rotate_back(Q, sol.solution)
 
         timed && print_timer()
 
         return (
                 vectors= X,
-                values=diag(M * sol.solution),
+                values=diagprod(M, sol.solution),
                 trace=sol.trace,
                 iterations=sol.f_calls,
                 matvecs=sol.matvecs
@@ -74,13 +94,13 @@ function ipt!(
 
         sol = fixedpoint(F!, X₀; method=:anderson, ftol=tol, store_trace=trace, m=anderson_memory, iterations = maxiter)
 
-        @timeit_debug "rotate back" X = Q * sol.zero
+        @timeit_debug "rotate back" X = rotate_back(Q, sol.zero)
 
         timed && print_timer()
 
         return (
             vectors= X,
-            values=diag(M * sol.zero),
+            values=diagprod(M, sol.zero),
             trace=trace ? [sol.trace[i].fnorm for i in 1:sol.iterations] : nothing
         )
 
@@ -119,8 +139,8 @@ function ipt!(
         i == maxiter && println("Didn't converge in $maxiter iterations.")
 
         return (
-            vectors=  Q* X,
-            values=diag(M * X),
+            vectors= rotate_back(Q, X),
+            values=diagprod(M, X),
             matvecs=trace ? matvecs[1:i] : nothing,
             trace=trace ? reduce(hcat, residual_history[1:i])' : nothing
         )
@@ -129,26 +149,95 @@ function ipt!(
 end
 
 
-function quadratic!(Y, X, M::Union{Matrix, SparseMatrixCSC}, D, G, T)
+function quadratic!(Y, X, M::Union{Matrix, SparseMatrixCSC}, d::AbstractVector, T,
+                    anchors::AbstractVector{<:Integer}=Base.OneTo(size(X, 2)))
 
     @timeit_debug "matrix product" mul!(Y, M, X)
-    @timeit_debug "residuals" R  = vec(mapslices(norm, Y .- X * Diagonal(Y); dims=1))
-    @timeit_debug "diagonal product 1" mul!(Y, D, X, -one(T), one(T))
-    @timeit_debug "diagonal product 2" mul!(Y, X, Diagonal(Y), -one(T), one(T))
-    @timeit_debug "hadamard product" Y .*= G
-    @timeit_debug "reset diagonal" Y[diagind(Y)] .= one(T)
+    @timeit_debug "fused update" R = fused_update!(Y, X, d, anchors)
 
     return R
 end
 
-function quadratic!(Y, X, M::LinearMapAX, D, G, T)
-
+function quadratic!(Y, X, M::LinearMapAX, d::AbstractVector, T,
+                    anchors::AbstractVector{<:Integer}=Base.OneTo(size(X, 2)))
 
     @timeit_debug "matrix product" Y .= Matrix(M * X)
-    @timeit_debug "residuals" R  = vec(mapslices(norm, Y .- X * Diagonal(Y); dims=1))
-    @timeit_debug "diagonal product 1" mul!(Y, D, X, -one(T), one(T))
-    @timeit_debug "diagonal product 2" mul!(Y, X, Diagonal(Y), -one(T), one(T))
-    @timeit_debug "hadamard product" Y .*= G
-    @timeit_debug "reset diagonal" Y[diagind(Y)] .= one(T)
+    @timeit_debug "fused update" R = fused_update!(Y, X, d, anchors)
+
     return R
 end
+
+"""
+Single fused pass over Y = M X implementing everything after the matrix product:
+the residual norms of the current iterate, the two diagonal products, the division
+by the gap (the former Hadamard product with G, now an on-the-fly division -- it
+benchmarks faster than streaming a precomputed N x k reciprocal table, and removes
+that table's allocation and construction from prepare entirely), and the diagonal
+reset. Column j reads Y[i,j], X[i,j] once each and writes Y[i,j] once, with no
+temporaries. Columns are independent, so the pass threads when Julia has threads
+and the block is large enough to amortize the fork.
+"""
+function fused_update!(Y::AbstractMatrix{T}, X, d, anchors) where T
+    N, k = size(Y)
+    R = Vector{real(T)}(undef, k)
+    if Threads.nthreads() > 1 && k >= 64
+        Threads.@threads :static for j in 1:k
+            R[j] = fused_column!(Y, X, d, j, anchors[j], N)
+        end
+    else
+        for j in 1:k
+            R[j] = fused_column!(Y, X, d, j, anchors[j], N)
+        end
+    end
+    return R
+end
+
+@inline function fused_column!(Y::AbstractMatrix{T}, X, d, j, a, N) where T
+    @inbounds begin
+        λ = Y[a, j]                    # (MX)[a,j], the eigenvalue estimate
+        da = d[a]
+        s = λ - da
+        r = zero(real(T))
+        @simd for i in 1:N
+            y = Y[i, j]
+            x = X[i, j]
+            r += abs2(y - λ * x)                    # residual of the input iterate
+            Y[i, j] = (y - (d[i] + s) * x) / (da - d[i])  # next iterate
+        end
+        Y[a, j] = one(T)
+        return sqrt(r)
+    end
+end
+
+"""
+diag(M * X) without the full O(N²k) product: entry j is row_j(M) ⋅ X[:,j], so the
+whole vector costs O(Nk) dense and O(nnz) sparse.
+"""
+function diagprod(M::Matrix, X::AbstractMatrix)
+    N, k = size(X)
+    v = Vector{promote_type(eltype(M), eltype(X))}(undef, k)
+    @inbounds for j in 1:k
+        acc = zero(eltype(v))
+        @simd for i in 1:N
+            acc += M[j, i] * X[i, j]
+        end
+        v[j] = acc
+    end
+    return v
+end
+
+function diagprod(M::SparseMatrixCSC, X::AbstractMatrix)
+    k = size(X, 2)
+    v = zeros(promote_type(eltype(M), eltype(X)), k)
+    rows = rowvals(M); vals = nonzeros(M)
+    @inbounds for i in 1:size(M, 2), p in nzrange(M, i)
+        r = rows[p]
+        r <= k && (v[r] += vals[p] * X[i, r])
+    end
+    return v
+end
+
+diagprod(M, X) = diag(M * X)
+
+# Q === I means no preparation rotation was needed; skip the copy entirely.
+rotate_back(Q, X) = Q === I ? X : Q * X
