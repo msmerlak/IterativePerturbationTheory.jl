@@ -97,5 +97,6 @@ re-run on quieter hardware before being believed in either direction.
 
 Connection worth noting: for exactly low-rank V this is a general-rank sibling of
 classical diagonal-plus-rank-one eigensolvers; IPT supplies the iteration and the
-randomized sketch supplies the factorization, with the perturbative structure
-(near-diagonal M) doing the rest.
+randomized sketch supplies the factorization. This is made exact -- and mined for
+consequences (a 200x rank-1 basin extension, a third basin-failure mechanism, an
+O(Nr)-memory collective iteration) -- in `secular_connection.md`.
