@@ -90,6 +90,43 @@ neither perturbative nor degenerate -- the regime where dlaed-style deflation
 machinery earns its complexity. The adiabatic regime (motion < 0.1 gap) is the
 honest domain, and it is the physically common one (MD, SCF, parameter sweeps).
 
+## The Ogita-Aishima comparison
+
+Head-to-head against the natural incumbent for gemm-rich refinement
+(`oa_comparison.jl`; OA implemented from its first-order conditions -- E_ij =
+(S_ij + lam_j R_ij)/(lam_j - lam_i), sym(E) = R/2 -- with an adaptive cluster
+fallback; verified textbook-quadratic: 1e-5 -> 8e-9 -> 1e-14 per step. Caveat:
+this is OA-I plus a simple adaptive threshold; the published follow-ups
+(clustered/multiple eigenvalues) would improve its cluster and tracking numbers,
+and were not accessible from this sandbox).
+
+| regime | OA | IPT pipeline | verdict |
+|---|---|---|---|
+| cold F32, GOE N=1000/2000 | resid 2-3e-14, 0.33/2.11 s | resid 3-4e-14, 0.36/1.88 s | parity (+-15%) |
+| tracking delta=1e-4 | OA(2) stalls at 7e-6; OA(3) ~ IPT cost | 2.3e-12, 1.17x vs LAPACK | ~parity, one structural note |
+| exact 5-fold clusters | resid 1.6e-8, ortho 3.0e-9 | resid 1.8e-6, ortho 2.2e-4 | **OA clearly better today** |
+| near-diagonal native (eps=1e-3) | 0.144 s from X = I | 0.085 s | **IPT 1.7x** |
+| nonsymmetric | not applicable (standard OA) | machine precision | **IPT only** |
+
+Reading. OA is an excellent, simple baseline: parity on commodity cold starts
+(both ~10-12 gemm-equivalents, matching the cost model: OA needs no rotation and
+no Newton-Schulz because it corrects orthogonality internally through R -- a
+genuinely elegant feature worth grafting), and its orthogonality-first design
+degrades *gracefully* on exact clusters, where any orthonormal basis of the
+eigenspace is correct and OA's fallback returns exactly that (our block-PT path
+has better eigenvalues there, 4e-12 vs 6e-10, but far worse vectors until the
+detection engineering lands). The structural note from tracking: OA's cluster
+fallback is gated by one global error threshold, which freezes well-separated
+pairs whenever the error profile is spread; IPT resolves every pair
+independently. And IPT keeps three differentiators OA lacks: the near-diagonal
+native regime at 1 gemm/sweep vs 3.5 (1.7x measured), the nonsymmetric problem,
+and the a posteriori convergence certificate.
+
+The synthesis, rather than the contest, is the actionable conclusion: OA-style
+internal orthogonality correction (replacing the Newton-Schulz preamble) +
+IPT-style per-column resolution, deflation, and acceleration + block-Ritz
+clusters is a strictly better design than either method alone.
+
 ## Verdict
 
 "General-purpose" is achieved in accuracy: any symmetric or nonsymmetric matrix
