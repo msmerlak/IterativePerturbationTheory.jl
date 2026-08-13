@@ -106,6 +106,45 @@ no basin, IPT needs no globalizer, and the crossover point (rotated coupling
 entries ~0.15 of the local gaps) is exactly where the basin theory says IPT
 becomes safe. Measured end to end: 2.79 s and dlambda 4e-15 at N = 1000, cold.
 
+## Proof groundwork and stress battery (`ssj_stress.jl`)
+
+Evidence toward a convergence theorem, and its exact boundary:
+
+- **Monotone descent of off(B) on every generic input tested**: 20 GOE seeds
+  (worst single-sweep "increase" is -1e-13, i.e. never up), zero-diagonal GOE
+  (every angle saturated at pi/4 from sweep one; 21 sweeps, monotone),
+  Wilkinson W21+, graded spectra 2^-i (dlambda 4e-16 -- graded matrices are a
+  classical trap), rank-one, Wishart. All converge cold.
+- **Strict monotonicity is false in general**: the tridiagonal Toeplitz(2,1)
+  chain -- equal gaps AND equal couplings, maximal simultaneous-rotation
+  conflict -- shows a +2.3e-3 off-excursion and still converges (37 sweeps,
+  dlambda 4e-15). So the theorem to chase is generic or eventual descent, not
+  unconditional descent; the polar atan(sigma) bound on the composed step is
+  the natural control on the non-commutativity error.
+- **Sweep count scales like O(log N)**: 17, 21, 25, 29, 36 sweeps at
+  N = 100, 200, 400, 800, 1600 (GOE, cold) -- about +4.7 per doubling. Total
+  cold cost O(N^3 log N) in pure BLAS3.
+
+## The nonsymmetric attempt: negative, with the failure mapped
+
+A simultaneous saturated iteration toward the real Schur form was tried
+(zeroing angle from the 2x2 quadratic b t^2 + (d-a) t - c = 0 -- atan-saturated
+like the symmetric case). Three variants:
+
+| variant | result |
+|---|---|
+| min-abs-t root, skip complex-disc pairs | real-spectrum test descends to 4e-4 then stalls; Ginibre stuck (most pairs skipped) |
+| + minimizing rotation for complex pairs | no improvement |
+| + diagonal-ordering root selection | regression (large ordering angles destroy progress) |
+
+The symmetric case's self-stabilization does not transfer: off^2 is not a
+Lyapunov function for Schur-direction rotations even sequentially, which is the
+classical reason nonsymmetric Jacobi methods need norm-reducing shears
+(Eberlein) and careful orderings. A saturated simultaneous Eberlein -- rotations
+plus bounded shears -- is the credible next attempt, and it is a research
+project, not an evening. Until then the nonsymmetric route remains the F32
+eigen + complex IPT refinement pipeline.
+
 ## Caveats
 
 No convergence proof: sequential cyclic-Jacobi proofs do not transfer to
