@@ -145,6 +145,37 @@ plus bounded shears -- is the credible next attempt, and it is a research
 project, not an evening. Until then the nonsymmetric route remains the F32
 eigen + complex IPT refinement pipeline.
 
+## Doing without the QR factorization (`ssj_gemmonly.jl`)
+
+IPT is gemm + elementwise only; baseline SSJ pays one QR per sweep. The QR can
+be removed at a measured price. Cap the STEP spectrally, K <- K * min(1,
+1/||K||_2) (spectral norm by a few power iterations, O(N^2); the earlier
+Frobenius cap was far too tight -- it throttled every pair to make the sum
+small, where the spectral cap only throttles coherent rotations), and
+orthonormalize with adaptive-depth Newton-Schulz: iterate Y <- Y(3I - Y'Y)/2
+until ||Y'Y - I|| < max(1e-14, 0.05 * off(B)/||A||). Each NS step's Y'Y also
+serves as the error monitor, so the check is free.
+
+Measured (N = 200): sweep counts at parity with the QR version (21 vs 20 on
+GOE, 16 vs 15 on D + 5W), machine precision, orthogonality 2e-14. Cost: ~12
+raw gemms per sweep against ~5.7 gemm-equivalents for the QR version -- about
+2x the flops on CPU, but every flop is a gemm, which is the favorable trade on
+hardware where gemm outruns panel factorizations by 5-10x. Cap = 2 fails with
+NaN exactly at the theoretical boundary (sigma(I+K) = sqrt(5) > sqrt(3), the
+edge of NS's convergence region), a satisfying consistency check.
+
+Two refinements of earlier findings fall out. The "deferred orthonormalization
+diverges" result is sharpened: full orthogonality is NOT needed -- tolerance
+0.05 * off suffices, which is what makes the gemm-only variant affordable; the
+earlier failure was O(1) deviation, not small deviation. And the prospect of
+removing orthonormalization ENTIRELY (a Falk-Langemeyer-style pencil iteration
+tracking (B, G) under congruences) was considered and set aside for a
+principled reason: an unconstrained oblique basis can degenerate, and basis
+degeneration is precisely the gauge-pole mechanism that the orthonormal
+parameterization eliminated. Maintaining a well-conditioned basis is not
+overhead -- it is the thing that buys the global basin. The choice is only
+HOW to pay: QR, or capped-step NS in pure gemm.
+
 ## Caveats
 
 No convergence proof: sequential cyclic-Jacobi proofs do not transfer to
