@@ -74,6 +74,38 @@ scratch (3.6 s vs 0.17 s at N = 1000, measured honestly). The roles are:
    eigensolve costs 50-200 gemms, 30 sweeps x 5-6 gemm-equivalents is
    competitive *from scratch*, with no low-precision stage.
 
+## Improvement round: what worked and what the failures teach
+
+Four acceleration candidates were tested against the baseline (GOE N = 1000,
+31 sweeps, 4.99 s):
+
+| variant | result |
+|---|---|
+| one Newton-Schulz step instead of QR once ||K||_F < 0.5 | **3.05 s, 1.6x**, accuracy unchanged |
+| handoff to package IPT once off(B)/||A|| < 1e-2 | **2.79 s, 1.8x total** (28 sweeps + 16 f-calls at 1 gemm each) |
+| second-order retraction X(I + K + K^2/2) | **diverges** (maxiter) |
+| Anderson acceleration on the sweep map | **diverges** |
+| deferred orthonormalization (QR every 2nd sweep) | **diverges** |
+
+The three failures share one cause, and it is the deepest fact about this
+algorithm. For antisymmetric K, the orthogonal (polar) factor of I + K rotates
+each K-invariant plane by atan(sigma) rather than sigma -- provable in two
+lines from the eigenstructure of I + K. So the orthonormalization step is not
+bookkeeping: it is a SECOND, automatic angle saturation, applied to the
+composed step exactly where the elementwise atan cannot see it (many moderate
+angles composing into a large one). The map is self-stabilizing precisely
+because it linearizes and then reprojects. Every "improvement" that makes the
+step more faithful to the full rotation (exp-like retraction), extrapolates
+across sweeps (Anderson), or skips the reprojection (deferred QR) removes the
+stabilizer and diverges. The practical corollary: optimize the
+orthonormalization's cost (NS in the endgame), never its frequency or the
+step's aggressiveness.
+
+The handoff hybrid also closes the loop with the rest of the session: SSJ needs
+no basin, IPT needs no globalizer, and the crossover point (rotated coupling
+entries ~0.15 of the local gaps) is exactly where the basin theory says IPT
+becomes safe. Measured end to end: 2.79 s and dlambda 4e-15 at N = 1000, cold.
+
 ## Caveats
 
 No convergence proof: sequential cyclic-Jacobi proofs do not transfer to
